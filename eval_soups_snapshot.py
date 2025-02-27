@@ -155,7 +155,7 @@ def greedy_soup_ece(models, model_names, valid_loader, device, variant, config, 
     greedy_soup_ingredients = [sorted_models[0][0]]
     
     TOLERANCE = (sorted_models[-1][1] - sorted_models[0][1]) / 2
-    TOLERANCE = 1
+    TOLERANCE = 0
 
     print(f'Tolerance: {TOLERANCE}')
 

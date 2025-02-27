@@ -30,7 +30,7 @@ def train():
     data_path = config['data_root']
     batch_size = int(config['batch_size'])
     # max_epoch = int(config['epoch'])
-    max_epoch = 100
+    max_epoch = 200
 
     if not os.path.exists(save_path):
         os.mkdir(save_path)
@@ -56,8 +56,9 @@ def train():
     optimizer = torch.optim.SGD(model.parameters(), lr=0.1,
                         momentum=0.9, weight_decay=5e-4)
 
-    # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=100)
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=lr_decay, gamma=0.1)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=100)
+    # scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=lr_decay, gamma=0.1)
+    print("scheduler: ", scheduler)
     
     saver = timm.utils.CheckpointSaver(model, optimizer, checkpoint_dir= save_path, max_history = 1) 
     

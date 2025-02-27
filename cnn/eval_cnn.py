@@ -2,11 +2,9 @@ import warnings
 warnings.filterwarnings("ignore", message="xFormers is not available")
 
 import os
-os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-os.environ["TORCH_USE_CUDA_DSA"] = '1'
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6,7"
 import sys
-sys.path.append("/home/youmin/workspace/VFMs-Adapters-Ensemble/adapter_ensemble")
+sys.path.append("/SSDe/youmin_park/adapter-weight-ensemble/")
 import torch
 import torch.nn as nn
 
@@ -37,7 +35,7 @@ def train():
     parser.add_argument('--gpu', '-g', default = '0', type=str)
     parser.add_argument('--netsize', default='s', type=str)
     parser.add_argument('--save_path', '-s', type=str)
-    parser.add_argument('--type', '-t', default= 'rein', type=str)
+    parser.add_argument('--type', '-t', default= 'resnet', type=str)
     args = parser.parse_args()
 
     config = read_conf('conf/data/'+args.data+'.yaml')
@@ -54,6 +52,9 @@ def train():
 
     if args.data == 'cifar10':
         test_loader = cifar10.get_test_loader(batch_size, shuffle=False, num_workers=4, pin_memory=True, data_dir=data_path)
+    elif args.data == 'cifar100':
+        test_loader = cifar100.get_test_loader(data_dir=data_path, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True)
+        _, valid_loader = cifar100.get_train_valid_loader(data_dir=data_path, augment=True, batch_size=batch_size, valid_size=0.1, random_seed=42, shuffle=True, num_workers=4, pin_memory=True)
     elif args.data == 'ham10000':
         train_loader, valid_loader, test_loader = ham10000.get_dataloaders(data_path, batch_size=32, num_workers=4)
 

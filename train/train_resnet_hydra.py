@@ -81,11 +81,11 @@ def train():
     # optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay = 1e-5)
     optimizer = torch.optim.SGD(model.parameters(), lr=0.1, momentum=0.9, weight_decay=5e-4)
     
-    lr_decay_epochs = 70
+    lr_decay_epochs = 140
     lr_scheduler_decay = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[50, 70], gamma=0.1)
 
     cyclic_start_epoch = lr_decay_epochs  
-    cycle_length = 30        
+    cycle_length = 60        
     cyclic_epochs = max_epoch - cyclic_start_epoch  
     print(f"Total cyclic epochs: {cyclic_epochs}")
 
@@ -168,7 +168,7 @@ def train():
         total = 0
         correct = 0
 
-        valid_accuracy = validation_accuracy(model, valid_loader, device)
+        valid_accuracy = validation_accuracy(model, valid_loader, device, mode = "resnet")
         if epoch >= max_epoch-10:
             avg_accuracy += valid_accuracy 
 
