@@ -2,6 +2,8 @@ import warnings
 warnings.filterwarnings("ignore", message="xFormers is not available")
 import contextlib
 import io
+import sys
+sys.path.append("/SSDe/youmin_park/adapter-weight-ensemble/")
 import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6,7"
 import torch
@@ -9,109 +11,25 @@ import torch.nn as nn
 import argparse
 import numpy as np
 import glob
+from torchvision import models
 from torch.cuda.amp.autocast_mode import autocast
 from utils import read_conf, validation_accuracy, ModelWithTemperature, validate, evaluate, calculate_ece, calculate_nll, validation_accuracy_lora, compute_aurc, compute_auroc, compute_fpr95
 import dino_variant
 from data import cifar10, cifar100, ham10000
 import rein
-from losses import DECE
 
-# Model forward function
-def rein_forward(model, inputs):
-    output = model.forward_features(inputs)[:, 0, :]
-    output = model.linear(output)
-    output = torch.softmax(output, dim=1)
-    return output
 
-def lora_forward(model, inputs):
-    with autocast(enabled=True):
-        features = model.forward_features(inputs)
-        output = model.linear(features)
-        output = torch.softmax(output, dim=1)
-    return output
-
-# def initialize_model(variant, config, device, args):
-#     model_load = dino_variant._small_dino
-#     dino = torch.hub.load('facebookresearch/dinov2', model_load)
-#     dino_state_dict = dino.state_dict()
-
-#     if args.type == 'rein':
-#         model = rein.ReinsDinoVisionTransformer(
-#             **variant
-#         )
-#         model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
-#         model.load_state_dict(dino_state_dict, strict=True) # 수정
-#         model.to(device)
-
-#     elif args.type == 'lora':
-#         new_state_dict = dict()
-#         for k in dino_state_dict.keys():
-#             new_k = k.replace("attn.qkv", "attn.qkv.qkv")
-#             new_state_dict[new_k] = dino_state_dict[k]
-#         model = rein.LoRADinoVisionTransformer(dino)
-#         model.dino.load_state_dict(new_state_dict, strict=True)
-#         model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
-#         model.to(device)
-        
-#     return model
-
-def initialize_model(variant, config, device, args):
-    model_load = dino_variant._small_dino
-    dino = torch.hub.load('facebookresearch/dinov2', model_load)
-    dino_state_dict = dino.state_dict()
-
-    # ReinsDinoVisionTransformer 모델 생성
-    if args.type == 'rein':
-        model = rein.ReinsDinoVisionTransformer(**variant)
-        model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
-    elif args.type == 'lora':
-        # LoRA 계열 모델은 attn.qkv를 attn.qkv.qkv로 rename
-        new_state_dict = {}
-        for k, v in dino_state_dict.items():
-            new_k = k.replace("attn.qkv", "attn.qkv.qkv")
-            new_state_dict[new_k] = v
-        dino_state_dict = new_state_dict
-
-        model = rein.LoRADinoVisionTransformer(dino)
-        model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
-
-    # --------------------------------------------------------------------
-    # (A) 모델 전체 state_dict 불러옴 (아직은 랜덤 초기화 파라미터 포함)
-    model_dict = model.state_dict()
-
-    # (B) DINO state_dict 중 현재 모델 키/shape와 일치하는 항목만 filtering
-    filtered_dict = {}
-    for k, v in dino_state_dict.items():
-        if k in model_dict and model_dict[k].shape == v.shape:
-            filtered_dict[k] = v
-
-    # (C) 모델 dict에 DINO 파라미터를 덮어씌움
-    model_dict.update(filtered_dict)
-
-    # (D) strict=True로 최종 로딩 (filtered_dict 외 키는 그대로)
-    model.load_state_dict(model_dict, strict=True)
-    # --------------------------------------------------------------------
-
-    model.to(device)
+def initialize_model(config, device, args):
+    model = models.resnet50(pretrained=False)
+    model.fc = nn.Linear(model.fc.in_features, config['num_classes'])  
+    model = model.to(device)
     return model
 
 
-def get_model_from_sd(state_dict, variant, config, device, args):
-    if args.type == 'rein':
-        model = rein.ReinsDinoVisionTransformer(**variant)
-        model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
-        model.load_state_dict(state_dict, strict=True)
-    elif args.type == 'lora':
-        model_load = dino_variant._small_dino
-        dino = torch.hub.load('facebookresearch/dinov2', model_load)
-        dino_state_dict = dino.state_dict()
-        new_state_dict = dict()
-        for k in dino_state_dict.keys():
-            new_k = k.replace("attn.qkv", "attn.qkv.qkv")
-            new_state_dict[new_k] = dino_state_dict[k]
-        model = rein.LoRADinoVisionTransformer(dino)
-        model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
-        model.load_state_dict(state_dict, strict=True)
+def get_model_from_sd(state_dict, config, device, args):
+    model = models.resnet50(pretrained=False)
+    model.fc = nn.Linear(model.fc.in_features, config['num_classes'])
+    model.load_state_dict(state_dict, strict=True)
     model.to(device)
     
     return model
@@ -179,15 +97,11 @@ def greedy_soup_ece(models, model_names, valid_loader, device, variant, config, 
         with torch.no_grad():
             for inputs, target in valid_loader:
                 inputs, target = inputs.to(device), target.to(device)
-                if args.type == 'rein':
-                    output = rein_forward(temp_model, inputs)
-                    # print(output.shape)  
-                elif args.type == 'lora':
-                    with autocast(enabled=True):
-                        output = lora_forward(temp_model, inputs)
+                output = model(inputs)
+                output = torch.softmax(output, dim=1)
         
                 outputs.append(output.cpu())
-                targets.append(target.cpu())
+                targets.append(target.cpu())    
         outputs = torch.cat(outputs).numpy()
         targets = torch.cat(targets).numpy().astype(int)
         held_out_val_ece = calculate_ece(outputs, targets)
@@ -211,10 +125,7 @@ def greedy_soup_ece(models, model_names, valid_loader, device, variant, config, 
 
 def greedy_soup_acc(models, model_names, valid_loader, device, variant, config, args):
     # Evaluate and sort models by validation accuracy
-    if args.type == 'rein':
-        model_accuracies = [(model, validation_accuracy(model, valid_loader, device), name) for model, name in zip(models, model_names)]
-    elif args.type == 'lora':
-        model_accuracies = [(model, validation_accuracy_lora(model, valid_loader, device), name) for model, name in zip(models, model_names)]
+    model_accuracies = [(model, validation_accuracy(model, valid_loader, device, mode = 'resnet'), name) for model, name in zip(models, model_names)]
     
     # Sort models based on accuracy
     sorted_models = sorted(model_accuracies, key=lambda x: x[1], reverse=True)
@@ -248,14 +159,11 @@ def greedy_soup_acc(models, model_names, valid_loader, device, variant, config, 
         }
         
         # Load the new potential parameters into the base model for evaluation
-        temp_model = get_model_from_sd(potential_greedy_soup_params, variant, config, device, args)
+        temp_model = get_model_from_sd(potential_greedy_soup_params, config, device, args)
         temp_model.eval()
         
         # Calculate validation accuracy with the potential new soup parameters
-        if args.type == 'rein':
-            held_out_val_accuracy = validation_accuracy(temp_model, valid_loader, device, mode='rein')
-        elif args.type == 'lora':
-            held_out_val_accuracy = validation_accuracy_lora(temp_model, valid_loader, device)
+        held_out_val_accuracy = validation_accuracy(temp_model, valid_loader, device, mode = 'resnet')
         
         print(f'Held-out validation accuracy: {held_out_val_accuracy}, best accuracy so far: {max_accuracy}.\n')
         
@@ -268,7 +176,7 @@ def greedy_soup_acc(models, model_names, valid_loader, device, variant, config, 
         else:
             print(f'[No improvement. Reverting to best-known parameters.]\n')
          
-        final_model = get_model_from_sd(greedy_soup_params, variant, config, device, args)
+        final_model = get_model_from_sd(greedy_soup_params, config, device, args)
         
 
     return greedy_soup_params, final_model
@@ -287,7 +195,8 @@ def train():
     config = read_conf(os.path.join('conf', 'data', f'{args.data}.yaml'))
     device = torch.device(f'cuda:{args.gpu}' if torch.cuda.is_available() else 'cpu')
     data_path = config['data_root']
-    batch_size = int(config['batch_size'])
+    # batch_size = int(config['batch_size'])
+    batch_size = 128
     checkpoint = args.checkpoint
     
     save_paths = [ 
@@ -305,13 +214,12 @@ def train():
     
     model_names = [os.path.basename(path) for path in save_paths]
 
-    variant = dino_variant._small_variant
     
     models = []
 
     
     for save_path in save_paths:
-        model = initialize_model(variant, config, device, args)
+        model = initialize_model(config, device, args)
         state_dict = torch.load(save_path, map_location='cpu')
         model.load_state_dict(state_dict, strict=True) # 수정
         model.to(device)
@@ -319,18 +227,17 @@ def train():
         models.append(model)
 
     
-    # models = initialize_models(save_paths, variant, config, device, args)
     test_loader, valid_loader = setup_data_loaders(args, data_path, batch_size)
     
     if args.soup == 'acc':
         print('Greedy soup by ACC')
-        greedy_soup_params, model = greedy_soup_acc(models, model_names, valid_loader, device, variant, config, args)
+        greedy_soup_params, model = greedy_soup_acc(models, model_names, valid_loader, device,config, args)
     elif args.soup == 'ece':
         print('Greedy soup by ECE')
-        greedy_soup_params, model = greedy_soup_ece(models, model_names, valid_loader, device, variant, config, args)
+        greedy_soup_params, model = greedy_soup_ece(models, model_names, valid_loader, device, config, args)
     
 
-    model = get_model_from_sd(greedy_soup_params, variant, config, device, args)
+    model = get_model_from_sd(greedy_soup_params, config, device, args)
     model.eval()
     
 
@@ -345,16 +252,9 @@ def train():
     with torch.no_grad():
         for inputs, target in test_loader:
             inputs, target = inputs.to(device), target.to(device)
-            if args.type == 'rein':
-                output = rein_forward(model, inputs)
-                # print(output.shape)  
-            elif args.type == 'lora':
-                with autocast(enabled=True):
-                    features = model.forward_features(inputs)
-                    output = model.linear(features)
-                    output = torch.softmax(output, dim=1)
+            output = model(inputs)
+            output = torch.softmax(output, dim=1)
                     # print(output.shape)
-                
                 
             outputs.append(output.cpu())
             targets.append(target.cpu())
@@ -362,15 +262,6 @@ def train():
     outputs = torch.cat(outputs).numpy()
     targets = torch.cat(targets).numpy().astype(int)
     evaluate(outputs, targets, verbose=True)
-        # Failure Prediction Metrics 계산
-    aurc = compute_aurc(outputs, targets)
-    auroc = compute_auroc(outputs, targets)
-    fpr95 = compute_fpr95(outputs, targets)
-    
-    print("\n🔹 Failure Prediction Metrics 🔹")
-    print(f"AURC (Area Under Risk-Coverage Curve): {aurc:.4f}")
-    print(f"AUROC (Area Under ROC Curve): {auroc:.4f}")
-    print(f"FPR@95TPR (False Positive Rate at 95% True Positive Rate): {fpr95:.4f}")
 
 if __name__ == '__main__':
     train()

@@ -28,9 +28,10 @@ def train():
     device = 'cuda:'+args.gpu
     save_path = os.path.join(config['save_path'], args.save_path)
     data_path = config['data_root']
-    batch_size = int(config['batch_size'])
+    # batch_size = int(config['batch_size'])
+    batch_size = 128
     # max_epoch = int(config['epoch'])
-    max_epoch = 200
+    max_epoch = 100
 
     if not os.path.exists(save_path):
         os.mkdir(save_path)
@@ -40,7 +41,7 @@ def train():
     if args.data == 'cifar10':
         train_loader, valid_loader = cifar10.get_train_valid_loader(batch_size, augment=True, random_seed=42, valid_size=0.1, shuffle=True, num_workers=4, pin_memory=True, get_val_temp=0, data_dir=data_path)
     elif args.data == 'cifar100':
-        train_loader, valid_loader = cifar100.get_train_valid_loader(data_dir=data_path, augment=True, batch_size=32, valid_size=0.1, random_seed=42, shuffle=True, num_workers=4, pin_memory=True)
+        train_loader, valid_loader = cifar100.get_train_valid_loader(data_dir=data_path, augment=True, batch_size=batch_size, valid_size=0.1, random_seed=42, shuffle=True, num_workers=4, pin_memory=True)
     elif args.data == 'ham10000':
         train_loader, valid_loader, test_loader = ham10000.get_dataloaders(data_path, batch_size=32, num_workers=4)
     
@@ -72,6 +73,7 @@ def train():
     
     for epoch in range(max_epoch):
         ## training
+        epoch_start_time = time.time()
         model.train()
         total_loss = 0
         total = 0
@@ -123,6 +125,14 @@ def train():
               f'Train Acc: {train_accuracy:.4f} | Valid Acc: {valid_accuracy:.4f} | '
               f'LR: {optimizer.param_groups[0]["lr"]:.6f}')
 
+        epoch_duration = time.time() - epoch_start_time
+        epoch_time = str(timedelta(seconds=epoch_duration))
+        remaining_time = (max_epoch - (epoch + 1)) * epoch_duration
+        formatted_remaining_time = str(timedelta(seconds=remaining_time))
+        print(f"\nEpoch {epoch} took {epoch_time}")
+        print(f"Estimated remaining training time: {formatted_remaining_time}")
+        print()
+        
     total_duration = time.time() - start_time
     totoal_time = str(timedelta(seconds=total_duration))
     print(f"Total training time: {totoal_time}")

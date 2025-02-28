@@ -10,7 +10,7 @@ import torch.nn as nn
 import argparse
 import timm
 import numpy as np
-from utils import read_conf, validation_accuracy, evaluate, validation_accuracy_lora    
+from utils import read_conf, validation_accuracy, evaluate, validation_accuracy_lora, compute_aurc, compute_auroc, compute_fpr95
 from torch.cuda.amp.autocast_mode import autocast
 
 import random

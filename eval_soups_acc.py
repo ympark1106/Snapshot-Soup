@@ -9,7 +9,7 @@ import argparse
 import numpy as np
 from torch.cuda.amp.autocast_mode import autocast
 
-from utils import read_conf, validation_accuracy, ModelWithTemperature, validate, evaluate, calculate_ece, calculate_nll, validation_accuracy_lora
+from utils import read_conf, validation_accuracy, ModelWithTemperature, validate, evaluate, calculate_ece, calculate_nll, validation_accuracy_lora, compute_aurc, compute_auroc, compute_fpr95
 import dino_variant
 from data import cifar10, cifar100, ham10000
 import rein
@@ -304,6 +304,15 @@ def train():
     outputs = torch.cat(outputs).numpy()
     targets = torch.cat(targets).numpy().astype(int)
     evaluate(outputs, targets, verbose=True)
+        # Failure Prediction Metrics 계산
+    aurc = compute_aurc(outputs, targets)
+    auroc = compute_auroc(outputs, targets)
+    fpr95 = compute_fpr95(outputs, targets)
+    
+    print("\n🔹 Failure Prediction Metrics 🔹")
+    print(f"AURC (Area Under Risk-Coverage Curve): {aurc:.4f}")
+    print(f"AUROC (Area Under ROC Curve): {auroc:.4f}")
+    print(f"FPR@95TPR (False Positive Rate at 95% True Positive Rate): {fpr95:.4f}")
 
 if __name__ == '__main__':
     train()

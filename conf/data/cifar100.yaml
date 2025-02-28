@@ -4,7 +4,7 @@ data_root: /ailab_mat/dataset/CIFAR100
 batch_size: 32
 num_workers: 4
 save_path: ./checkpoints/checkpoints_cifar100
-epoch: 740
+epoch: 370
 num_classes: 100
 
 object:

@@ -163,6 +163,7 @@ def evaluate(probs, y_true, verbose = False, normalize = False, bins = 15, is_sp
     # brier = brier_score_loss(y_true=y_true, y_prob=y_prob_true)  # Brier Score (MSE)
     
     if verbose:
+        print("\n🔹 MOdel Calibration Metrics 🔹")
         # print("Accuracy:", accuracy)
         # print("Error:", error)
         print("ECE:", ece)

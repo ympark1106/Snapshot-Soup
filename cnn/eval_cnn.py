@@ -11,7 +11,7 @@ import torch.nn as nn
 import argparse
 import timm
 import numpy as np
-from utils import read_conf, validation_accuracy, evaluate
+from utils import read_conf, validation_accuracy, evaluate, compute_aurc, compute_auroc, compute_fpr95
 
 from torchvision import models
 
@@ -43,7 +43,8 @@ def train():
     device = 'cuda:'+args.gpu
     save_path = os.path.join(config['save_path'], args.save_path)
     data_path = config['data_root']
-    batch_size = int(config['batch_size'])
+    # batch_size = int(config['batch_size'])
+    batch_size = 128
 
 
     if not os.path.exists(save_path):
