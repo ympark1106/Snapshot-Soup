@@ -17,7 +17,7 @@ import random
 import rein
 
 import dino_variant
-from data import cifar10, cifar100, cub, ham10000, bloodmnist, pathmnist, retinamnist
+from data import cifar10, cifar100, cub, ham10000, bloodmnist, pathmnist, retinamnist, eyepacs
 
 
 def rein_forward(model, inputs):
@@ -75,7 +75,7 @@ def train():
     data_path = config['data_root']
     # batch_size = int(config['batch_size'])
     batch_size = 32
-
+    num_workers = int(config['num_workers'])
 
     if not os.path.exists(save_path):
         os.mkdir(save_path)
@@ -93,7 +93,8 @@ def train():
     #     train_loader, test_loader, valid_loader = pathmnist.get_dataloader(batch_size, download=True, num_workers=4)
     # elif args.data == 'retinamnist':
     #     train_loader, test_loader, valid_loader = retinamnist.get_dataloader(batch_size, download=True, num_workers=4)
-        
+    elif args.data == 'eyepacs':
+        train_loader, valid_loader, test_loader = eyepacs.get_dataloaders(data_path, batch_size=batch_size, pin_memory=True,num_workers=num_workers)
         
     if args.netsize == 's':
         model_load = dino_variant._small_dino
@@ -173,6 +174,15 @@ def train():
     targets = torch.cat(targets).numpy()
     targets = targets.astype(int)
     evaluate(outputs, targets, verbose=True)
+        # Failure Prediction Metrics 계산
+    aurc = compute_aurc(outputs, targets)
+    auroc = compute_auroc(outputs, targets)
+    fpr95 = compute_fpr95(outputs, targets)
+    
+    print("\n🔹 Failure Prediction Metrics 🔹")
+    print(f"AURC (Area Under Risk-Coverage Curve): {aurc:.4f}")
+    print(f"AUROC (Area Under ROC Curve): {auroc:.4f}")
+    print(f"FPR@95TPR (False Positive Rate at 95% True Positive Rate): {fpr95:.4f}")
 
 
 

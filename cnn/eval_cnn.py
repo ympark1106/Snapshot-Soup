@@ -83,6 +83,7 @@ def train():
 
     ## validation
     test_accuracy = validation_accuracy(model, test_loader, device, mode=args.type)
+    print("\n🔹 Accuracy Metrics 🔹")
     print('test acc:', test_accuracy)
 
     outputs = []

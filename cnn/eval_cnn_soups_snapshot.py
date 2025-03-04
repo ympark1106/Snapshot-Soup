@@ -15,7 +15,7 @@ from torchvision import models
 from torch.cuda.amp.autocast_mode import autocast
 from utils import read_conf, validation_accuracy, ModelWithTemperature, validate, evaluate, calculate_ece, calculate_nll, validation_accuracy_lora, compute_aurc, compute_auroc, compute_fpr95
 import dino_variant
-from data import cifar10, cifar100, ham10000
+from data import cifar10, cifar100, ham10000, eyepacs
 import rein
 
 
@@ -44,6 +44,8 @@ def setup_data_loaders(args, data_path, batch_size):
         _, valid_loader = cifar100.get_train_valid_loader(data_dir=data_path, augment=True, batch_size=batch_size, valid_size=0.1, random_seed=42, shuffle=True, num_workers=4, pin_memory=True)
     elif args.data == 'ham10000':
         _, valid_loader, test_loader = ham10000.get_dataloaders(data_path, batch_size=32, num_workers=4)
+    elif args.data == 'eyepacs':
+        train_loader, valid_loader, test_loader = eyepacs.get_dataloaders(data_path, batch_size=batch_size, pin_memory=True, num_workers=16)
     # elif args.data == 'bloodmnist':
     #     _, valid_loader, test_loader = bloodmnist.get_dataloader(batch_size=32, download=True, num_workers=4)
     # elif args.data == 'pathmnist':
@@ -198,6 +200,7 @@ def train():
     # batch_size = int(config['batch_size'])
     batch_size = 128
     checkpoint = args.checkpoint
+    num_workers = int(config['num_workers'])
     
     save_paths = [ 
         # os.path.join(config['save_path'], checkpoint, 'cyclic_checkpoint_epoch219.pth'),
@@ -246,6 +249,7 @@ def train():
         test_accuracy = validation_accuracy_lora(model, test_loader, device)
     else:
         test_accuracy = validation_accuracy(model, test_loader, device, mode=args.type)
+    print("\n🔹 Accuracy Metrics 🔹")
     print('test acc:', test_accuracy)
 
     outputs, targets = [], []

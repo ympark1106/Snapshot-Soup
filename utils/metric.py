@@ -24,6 +24,7 @@ def validation_accuracy_lora(model, loader, device):
             _, predicted = outputs.max(1)  
             correct += predicted.eq(targets).sum().item()
     valid_accuracy = correct/total
+    # print("\n🔹 Accuracy Metrics 🔹")
     return valid_accuracy
 
 
@@ -47,6 +48,7 @@ def validation_accuracy(model, loader, device, mode='rein'):
             f = model.forward_features(inputs)  # 이미 원래 모델인 경우 그대로 호출
             f = f[:, 0, :]  # CLS 토큰만 선택
             outputs = model.linear(f)  # Linear 레이어 적용
+        
         return outputs
 
     

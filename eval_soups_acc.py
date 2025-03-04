@@ -11,7 +11,7 @@ from torch.cuda.amp.autocast_mode import autocast
 
 from utils import read_conf, validation_accuracy, ModelWithTemperature, validate, evaluate, calculate_ece, calculate_nll, validation_accuracy_lora, compute_aurc, compute_auroc, compute_fpr95
 import dino_variant
-from data import cifar10, cifar100, ham10000
+from data import cifar10, cifar100, ham10000, eyepacs
 import rein
 
 # Model forward function
@@ -40,6 +40,8 @@ def setup_data_loaders(args, data_path, batch_size):
         _, valid_loader = cifar100.get_train_valid_loader(data_dir=data_path, augment=True, batch_size=32, valid_size=0.1, random_seed=42, shuffle=True, num_workers=4, pin_memory=True)
     elif args.data == 'ham10000':
         _, valid_loader, test_loader = ham10000.get_dataloaders(data_path, batch_size=32, num_workers=4)
+    elif args.data == 'eyepacs':
+        train_loader, valid_loader, test_loader = eyepacs.get_dataloaders(data_path, batch_size=batch_size, pin_memory=True, num_workers=16)
     # elif args.data == 'bloodmnist':
     #     _, test_loader, valid_loader = bloodmnist.get_dataloader(batch_size,download=True, num_workers=4)
     # elif args.data == 'retinamnist':
@@ -240,6 +242,7 @@ def train():
     device = torch.device(f'cuda:{args.gpu}' if torch.cuda.is_available() else 'cpu')
     data_path = config['data_root']
     batch_size = int(config['batch_size'])
+    num_workers = int(config['num_workers'])   
     
     save_paths = [
         os.path.join(config['save_path'], 'reins_focal_1'),
@@ -280,7 +283,8 @@ def train():
     if args.type == 'rein':
         test_accuracy = validation_accuracy(model1, test_loader, device, mode='rein')
     elif args.type == 'lora':
-        test_accuracy = validation_accuracy_lora(model1, test_loader, device)    
+        test_accuracy = validation_accuracy_lora(model1, test_loader, device)  
+    print("\n🔹 Accuracy Metrics 🔹")  
     print('Test accuracy:', test_accuracy)
 
     outputs, targets = [], []

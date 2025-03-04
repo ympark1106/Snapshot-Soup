@@ -3,64 +3,109 @@ import pandas as pd
 from torchvision import transforms
 from torch.utils.data import Dataset, DataLoader
 from PIL import Image
-import zipfile
-import torch
+from sklearn.model_selection import train_test_split
 
-# Custom dataset class for Diabetic Retinopathy Detection
-class DiabeticRetinopathyDataset(Dataset):
-    def __init__(self, csv_file, root_dir, transform=None):
-        self.data = pd.read_csv(csv_file)
+# Custom dataset class
+class EyePACS_Dataset(Dataset):
+    def __init__(self, data, root_dir, transform=None):
+        self.data = data
         self.root_dir = root_dir
         self.transform = transform
-        self.data.columns = ['image', 'label']  # Ensure the CSV has correct column names
-
+        
     def __len__(self):
         return len(self.data)
 
     def __getitem__(self, idx):
         img_name = os.path.join(self.root_dir, self.data.iloc[idx, 0] + '.jpeg')
-        image = Image.open(img_name)
-        label = int(self.data.iloc[idx, 1])  # Ensure label is an integer
-
+        image = Image.open(img_name).convert("RGB")
+        label = self.data.iloc[idx, 1]
+        
         if self.transform:
             image = self.transform(image)
+        
+        return image, label
 
+# APTOS2019 Dataset
+class APTOS2019_Dataset(Dataset):
+    def __init__(self, csv_files, root_dirs, transform=None):
+        dataframes = [pd.read_csv(csv) for csv in csv_files]
+        self.data = pd.concat(dataframes, ignore_index=True)
+        self.root_dirs = root_dirs
+        self.transform = transform
+        
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        img_name = None
+        for root_dir in self.root_dirs:
+            img_path = os.path.join(root_dir, self.data.iloc[idx, 0] + '.png')
+            if os.path.exists(img_path):
+                img_name = img_path
+                break
+        
+        if img_name is None:
+            raise FileNotFoundError(f"Image {self.data.iloc[idx, 0]} not found in given directories")
+        
+        image = Image.open(img_name).convert("RGB")
+        label = self.data.iloc[idx, 1]
+        
+        if self.transform:
+            image = self.transform(image)
+        
         return image, label
 
 # DataLoader function
-def get_dataloaders(data_dir, csv_file, batch_size=32, num_workers=4):
+def get_dataloaders(data_dir, batch_size=32, num_workers=4, pin_memory=False, val_split=0.2):
     # Image transformations
     train_transform = transforms.Compose([
-        transforms.Resize((256, 256)),
+        transforms.Resize((224, 224)),
         transforms.RandomHorizontalFlip(p=0.5),
-        transforms.RandomCrop(size=(224, 224)),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
 
     test_transform = transforms.Compose([
-        transforms.Resize((256, 256)),
-        transforms.CenterCrop((224, 224)),
+        transforms.Resize((224, 224)),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
     
+    # File paths
+    eyepacs_dir = os.path.join(data_dir, 'eyepacs')
+    aptos_dir = os.path.join(data_dir, 'aptos2019')
+    
+    train_csv = os.path.join(eyepacs_dir, 'trainLabels.csv')
+    
+    aptos_csvs = [
+        os.path.join(aptos_dir, 'train_1.csv'),
+        os.path.join(aptos_dir, 'valid.csv'),
+        os.path.join(aptos_dir, 'test.csv')
+    ]
+    
+    train_dir = os.path.join(eyepacs_dir, 'train')
+    aptos_dirs = [
+        os.path.join(aptos_dir, 'train'),
+        os.path.join(aptos_dir, 'val'),
+        os.path.join(aptos_dir, 'test')
+    ]
+    
+    # Load EyePACS data and split into train/val
+    eyepacs_data = pd.read_csv(train_csv)
+    train_data, val_data = train_test_split(eyepacs_data, test_size=val_split, random_state=42, stratify=eyepacs_data.iloc[:, 1])
+    
     # Datasets
-    dataset = DiabeticRetinopathyDataset(csv_file=csv_file, root_dir=os.path.join(data_dir, 'train'), transform=train_transform)
-
-    # Split into train, validation, and test datasets
-    train_size = int(0.8 * len(dataset))
-    valid_size = int(0.1 * len(dataset))
-    test_size = len(dataset) - train_size - valid_size
-    train_dataset, valid_dataset, test_dataset = torch.utils.data.random_split(dataset, [train_size, valid_size, test_size])
-
+    train_dataset = EyePACS_Dataset(data=train_data, root_dir=train_dir, transform=train_transform)
+    val_dataset = EyePACS_Dataset(data=val_data, root_dir=train_dir, transform=test_transform)
+    test_dataset = APTOS2019_Dataset(csv_files=aptos_csvs, root_dirs=aptos_dirs, transform=test_transform)
+    
     # DataLoaders
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
-    valid_loader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, pin_memory=False, num_workers=num_workers)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, pin_memory=False, num_workers=num_workers)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, pin_memory=False, num_workers=num_workers)
     
     print("Train dataset size:", len(train_dataset))
-    print("Valid dataset size:", len(valid_dataset))
+    print("Validation dataset size:", len(val_dataset))
     print("Test dataset size:", len(test_dataset))
     
-    return train_loader, valid_loader, test_loader
+    return train_loader, val_loader, test_loader

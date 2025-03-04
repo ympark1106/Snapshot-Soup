@@ -12,7 +12,7 @@ import glob
 from torch.cuda.amp.autocast_mode import autocast
 from utils import read_conf, validation_accuracy, ModelWithTemperature, validate, evaluate, calculate_ece, calculate_nll, validation_accuracy_lora, compute_aurc, compute_auroc, compute_fpr95
 import dino_variant
-from data import cifar10, cifar100, ham10000
+from data import cifar10, cifar100, ham10000, eyepacs
 import rein
 from losses import DECE
 
@@ -132,6 +132,8 @@ def setup_data_loaders(args, data_path, batch_size):
     #     _, valid_loader, test_loader = pathmnist.get_dataloader(batch_size=32, download=True, num_workers=4)
     # elif args.data == 'retinamnist':
     #     _, valid_loader, test_loader = retinamnist.get_dataloader(batch_size=32, download=True, num_workers=4)
+    elif args.data == 'eyepacs':
+        train_loader, valid_loader, test_loader = eyepacs.get_dataloaders(data_path, batch_size=batch_size, pin_memory=True, num_workers=16)
     else:
         raise ValueError(f"Unsupported data type: {args.data}")
     
@@ -155,7 +157,7 @@ def greedy_soup_ece(models, model_names, valid_loader, device, variant, config, 
     greedy_soup_ingredients = [sorted_models[0][0]]
     
     TOLERANCE = (sorted_models[-1][1] - sorted_models[0][1]) / 2
-    TOLERANCE = 0
+    TOLERANCE = 1
 
     print(f'Tolerance: {TOLERANCE}')
 
@@ -289,7 +291,7 @@ def train():
     data_path = config['data_root']
     batch_size = int(config['batch_size'])
     checkpoint = args.checkpoint
-    
+    num_workers = int(config['num_workers'])
     save_paths = [ 
         # os.path.join(config['save_path'], checkpoint, 'cyclic_checkpoint_epoch219.pth'),
         # os.path.join(config['save_path'], checkpoint, 'cyclic_checkpoint_epoch249.pth'),
@@ -339,6 +341,7 @@ def train():
         test_accuracy = validation_accuracy_lora(model, test_loader, device)
     else:
         test_accuracy = validation_accuracy(model, test_loader, device, mode=args.type)
+    print("\n🔹 Accuracy Metrics 🔹")
     print('test acc:', test_accuracy)
 
     outputs, targets = [], []

@@ -19,7 +19,7 @@ import rein
 
 import dino_variant
 from sklearn.metrics import f1_score
-from data import cifar10, cifar100, cub, ham10000, bloodmnist, pathmnist, retinamnist
+from data import cifar10, cifar100, cub, ham10000, bloodmnist, pathmnist, retinamnist, eyepacs
 from losses import RankMixup_MNDCG, RankMixup_MRL, focal_loss, focal_loss_adaptive_gamma
 
 def count_trainable_params(model):
@@ -49,8 +49,10 @@ def train():
     save_path = os.path.join(config['save_path'], args.save_path)
     data_path = config['data_root']
     batch_size = int(config['batch_size'])
+    # batch_size = 64
     # max_epoch = int(config['epoch'])
     max_epoch = 100
+    num_workers = int(config['num_workers'])
     # noise_rate = args.noise_rate
 
     if not os.path.exists(save_path):
@@ -73,6 +75,8 @@ def train():
         train_loader, valid_loader, _ = pathmnist.get_dataloader(batch_size=32, download=True, num_workers=4)
     elif args.data == 'retinamnist':    
         train_loader, valid_loader, _ = retinamnist.get_dataloader(batch_size=32, download=True, num_workers=4)
+    elif args.data == 'eyepacs':
+        train_loader, valid_loader, _ = eyepacs.get_dataloaders(data_path, batch_size=batch_size, pin_memory=True, num_workers=num_workers)
     
         
     if args.netsize == 's':
@@ -177,7 +181,9 @@ def train():
         scheduler.step()
 
         saver.save_checkpoint(epoch, metric = valid_accuracy)
-        print('EPOCH {:4}, TRAIN [loss - {:.4f}, acc - {:.4f}], VALID [acc - {:.4f}]\n'.format(epoch, train_avg_loss, train_accuracy, valid_accuracy))
+        print(f'Epoch {epoch + 1}/{max_epoch} | Loss: {train_avg_loss:.4f} | '
+            f'Train Acc: {train_accuracy:.4f} | Valid Acc: {valid_accuracy:.4f} | '
+            f'LR: {optimizer.param_groups[0]["lr"]:.6f}')
         print(scheduler.get_last_lr())
     
     total_duration = time.time() - start_time

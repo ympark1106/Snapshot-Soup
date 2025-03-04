@@ -20,7 +20,7 @@ import rein
 
 import dino_variant
 from sklearn.metrics import f1_score
-from data import cifar100, ham10000
+from data import cifar100, ham10000, eyepacs
 from losses import RankMixup_MNDCG, RankMixup_MRL, focal_loss, focal_loss_adaptive_gamma
 
 def set_requires_grad(model, layers_to_train):
@@ -45,6 +45,7 @@ def train():
     data_path = config['data_root']
     batch_size = int(config['batch_size'])
     max_epoch = int(config['epoch'])
+    num_workers = int(config['num_workers'])
     
     if not os.path.exists(save_path):
         os.mkdir(save_path)
@@ -57,6 +58,8 @@ def train():
     #     train_loader, valid_loader = cub.get_train_val_loader(data_path, batch_size=32, scale_size=256, crop_size=224, num_workers=8, pin_memory=True)
     elif args.data == 'ham10000':
         train_loader, valid_loader, test_loader = ham10000.get_dataloaders(data_path, batch_size=batch_size, num_workers=4)
+    elif args.data == 'eyepacs':
+        train_loader, valid_loader, test_loader = eyepacs.get_dataloaders(data_path, batch_size=batch_size, pin_memory=True,num_workers=num_workers)
     # elif args.data == 'bloodmnist':
     #     train_loader, valid_loader,_ = bloodmnist.get_dataloader(batch_size, download=True, num_workers=4)
     # elif args.data == 'pathmnist':
@@ -96,11 +99,11 @@ def train():
 
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay = 1e-5)
     
-    lr_decay_epochs = 50
+    lr_decay_epochs = 70
     lr_scheduler_decay = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[50, 70], gamma=0.1)
 
     cyclic_start_epoch = lr_decay_epochs  
-    cycle_length = 50        
+    cycle_length = 30        
     cyclic_epochs = max_epoch - cyclic_start_epoch  
     print(f"Total cyclic epochs: {cyclic_epochs}")
 
