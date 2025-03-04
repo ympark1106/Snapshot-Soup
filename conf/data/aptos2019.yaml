@@ -1,7 +1,0 @@
-name: aptos2019
-
-data_root: /SSDe/youmin_park/dataset/aptos2019
-batch_size: 32
-epoch: 550
-num_classes: 7
-save_path: ./checkpoints/checkpoints_eyepacs
