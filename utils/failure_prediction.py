@@ -21,7 +21,7 @@ def compute_aurc(outputs, targets):
 
     # AURC 값 계산 (정규화된 범위로)
     aurc = np.trapz(risk, coverage)  # Risk-Coverage Curve의 면적 계산
-    return aurc * 100  # 0~100 범위로 조정 (필요 시 * 1.0으로 변경 가능)
+    return aurc
 
 def compute_auroc(outputs, targets):
     """

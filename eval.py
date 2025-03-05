@@ -147,6 +147,7 @@ def train():
         test_accuracy = validation_accuracy_lora(model, test_loader, device)
     else:
         test_accuracy = validation_accuracy(model, test_loader, device, mode=args.type)
+    print("\n🔹 Model Accuracy 🔹")
     print('test acc:', test_accuracy)
 
     outputs = []
@@ -173,14 +174,15 @@ def train():
     outputs = torch.cat(outputs).numpy()
     targets = torch.cat(targets).numpy()
     targets = targets.astype(int)
-    evaluate(outputs, targets, verbose=True)
-        # Failure Prediction Metrics 계산
-    aurc = compute_aurc(outputs, targets)
+    # evaluate(outputs, targets, verbose=True)
+    
+    # Failure Prediction Metrics 계산
+    # aurc = compute_aurc(outputs, targets)
     auroc = compute_auroc(outputs, targets)
     fpr95 = compute_fpr95(outputs, targets)
     
     print("\n🔹 Failure Prediction Metrics 🔹")
-    print(f"AURC (Area Under Risk-Coverage Curve): {aurc:.4f}")
+    # print(f"AURC (Area Under Risk-Coverage Curve): {aurc:.4f}")
     print(f"AUROC (Area Under ROC Curve): {auroc:.4f}")
     print(f"FPR@95TPR (False Positive Rate at 95% True Positive Rate): {fpr95:.4f}")
 

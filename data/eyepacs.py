@@ -85,9 +85,9 @@ def get_dataloaders(data_dir, batch_size=32, num_workers=4, pin_memory=False, va
     
     train_dir = os.path.join(eyepacs_dir, 'train')
     aptos_dirs = [
-        os.path.join(aptos_dir, 'train'),
-        os.path.join(aptos_dir, 'val'),
-        os.path.join(aptos_dir, 'test')
+        os.path.join(aptos_dir, 'train_images/train_images'),
+        os.path.join(aptos_dir, 'val_images/val_images'),
+        os.path.join(aptos_dir, 'test_images/test_images')
     ]
     
     # Load EyePACS data and split into train/val

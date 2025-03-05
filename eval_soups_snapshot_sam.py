@@ -30,31 +30,6 @@ def lora_forward(model, inputs):
         output = torch.softmax(output, dim=1)
     return output
 
-# def initialize_model(variant, config, device, args):
-#     model_load = dino_variant._small_dino
-#     dino = torch.hub.load('facebookresearch/dinov2', model_load)
-#     dino_state_dict = dino.state_dict()
-
-#     if args.type == 'rein':
-#         model = rein.ReinsDinoVisionTransformer(
-#             **variant
-#         )
-#         model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
-#         model.load_state_dict(dino_state_dict, strict=True) # 수정
-#         model.to(device)
-
-#     elif args.type == 'lora':
-#         new_state_dict = dict()
-#         for k in dino_state_dict.keys():
-#             new_k = k.replace("attn.qkv", "attn.qkv.qkv")
-#             new_state_dict[new_k] = dino_state_dict[k]
-#         model = rein.LoRADinoVisionTransformer(dino)
-#         model.dino.load_state_dict(new_state_dict, strict=True)
-#         model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
-#         model.to(device)
-        
-#     return model
-
 def initialize_model(variant, config, device, args):
     model_load = dino_variant._small_dino
     dino = torch.hub.load('facebookresearch/dinov2', model_load)

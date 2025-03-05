@@ -234,7 +234,7 @@ def train():
     
     if args.soup == 'acc':
         print('Greedy soup by ACC')
-        greedy_soup_params, model = greedy_soup_acc(models, model_names, valid_loader, device,config, args)
+        greedy_soup_params, model = greedy_soup_acc(models, model_names, valid_loader, device, config, args)
     elif args.soup == 'ece':
         print('Greedy soup by ECE')
         greedy_soup_params, model = greedy_soup_ece(models, model_names, valid_loader, device, config, args)
