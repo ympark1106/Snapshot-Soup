@@ -12,7 +12,7 @@ import glob
 from torch.cuda.amp.autocast_mode import autocast
 from utils import read_conf, validation_accuracy, ModelWithTemperature, validate, evaluate, calculate_ece, calculate_nll, validation_accuracy_lora, compute_aurc, compute_auroc, compute_fpr95
 import dino_variant
-from data import cifar10, cifar100, ham10000, eyepacs
+from data import dataloader
 import rein
 from losses import DECE
 
@@ -115,29 +115,7 @@ def get_model_from_sd(state_dict, variant, config, device, args):
     model.to(device)
     
     return model
-            
-# Data loader setup
-def setup_data_loaders(args, data_path, batch_size):
-    if args.data == 'cifar10':
-        test_loader = cifar10.get_test_loader(batch_size, shuffle=True, num_workers=4, pin_memory=True, get_val_temp=0, data_dir=data_path)
-        valid_loader = None
-    elif args.data == 'cifar100':
-        test_loader = cifar100.get_test_loader(data_dir=data_path, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True)
-        _, valid_loader = cifar100.get_train_valid_loader(data_dir=data_path, augment=True, batch_size=batch_size, valid_size=0.1, random_seed=42, shuffle=True, num_workers=4, pin_memory=True)
-    elif args.data == 'ham10000':
-        _, valid_loader, test_loader = ham10000.get_dataloaders(data_path, batch_size=32, num_workers=4)
-    # elif args.data == 'bloodmnist':
-    #     _, valid_loader, test_loader = bloodmnist.get_dataloader(batch_size=32, download=True, num_workers=4)
-    # elif args.data == 'pathmnist':
-    #     _, valid_loader, test_loader = pathmnist.get_dataloader(batch_size=32, download=True, num_workers=4)
-    # elif args.data == 'retinamnist':
-    #     _, valid_loader, test_loader = retinamnist.get_dataloader(batch_size=32, download=True, num_workers=4)
-    elif args.data == 'eyepacs':
-        train_loader, valid_loader, test_loader = eyepacs.get_dataloaders(data_path, batch_size=batch_size, pin_memory=True, num_workers=16)
-    else:
-        raise ValueError(f"Unsupported data type: {args.data}")
-    
-    return test_loader, valid_loader
+        
 
 # Greedy soup model ensembling
 def greedy_soup_ece(models, model_names, valid_loader, device, variant, config, args):
@@ -322,7 +300,7 @@ def train():
 
     
     # models = initialize_models(save_paths, variant, config, device, args)
-    test_loader, valid_loader = setup_data_loaders(args, data_path, batch_size)
+    _, valid_loader, test_loader = dataloader(args, data_path, batch_size)
     
     if args.soup == 'acc':
         print('Greedy soup by ACC')

@@ -11,7 +11,7 @@ from torch.cuda.amp.autocast_mode import autocast
 
 from utils import read_conf, validation_accuracy, ModelWithTemperature, validate, evaluate, calculate_ece, calculate_nll, validation_accuracy_lora, compute_aurc, compute_auroc, compute_fpr95
 import dino_variant
-from data import cifar10, cifar100, ham10000, eyepacs
+from data import dataloader
 import rein
 
 # Model forward function
@@ -29,27 +29,6 @@ def lora_forward(model, inputs):
         output = model.linear(features)
         output = torch.softmax(output, dim=1)
     return output
-
-# Data loader setup
-def setup_data_loaders(args, data_path, batch_size):
-    if args.data == 'cifar10':
-        test_loader = cifar10.get_test_loader(batch_size, shuffle=True, num_workers=4, pin_memory=True, get_val_temp=0, data_dir=data_path)
-        valid_loader = None
-    elif args.data == 'cifar100':
-        test_loader = cifar100.get_test_loader(data_dir=data_path, batch_size=32, shuffle=True, num_workers=4, pin_memory=True)
-        _, valid_loader = cifar100.get_train_valid_loader(data_dir=data_path, augment=True, batch_size=32, valid_size=0.1, random_seed=42, shuffle=True, num_workers=4, pin_memory=True)
-    elif args.data == 'ham10000':
-        _, valid_loader, test_loader = ham10000.get_dataloaders(data_path, batch_size=32, num_workers=4)
-    elif args.data == 'eyepacs':
-        train_loader, valid_loader, test_loader = eyepacs.get_dataloaders(data_path, batch_size=batch_size, pin_memory=True, num_workers=16)
-    # elif args.data == 'bloodmnist':
-    #     _, test_loader, valid_loader = bloodmnist.get_dataloader(batch_size,download=True, num_workers=4)
-    # elif args.data == 'retinamnist':
-    #     _, test_loader, valid_loader = retinamnist.get_dataloader(batch_size, download=True, num_workers=4)
-    # else:
-    #     raise ValueError(f"Unsupported data type: {args.data}")
-    
-    return test_loader, valid_loader
 
 
 # # Model initialization
@@ -271,7 +250,7 @@ def train():
         model.eval()
         models.append(model)
     
-    test_loader, valid_loader = setup_data_loaders(args, data_path, batch_size)
+    _, valid_loader, test_loader = dataloader(args, data_path, batch_size)
     
     # Step 1: Compute greedy soup parameters
     greedy_soup_params, model1 = greedy_soup_ensemble(models, model_names, valid_loader, variant, config, args, device)
