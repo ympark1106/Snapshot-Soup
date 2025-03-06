@@ -250,7 +250,7 @@ def train():
         model.eval()
         models.append(model)
     
-    _, valid_loader, test_loader = dataloader(args, data_path, batch_size)
+    _, valid_loader, test_loader = dataloader.setup_data_loaders(args, data_path, batch_size)
     
     # Step 1: Compute greedy soup parameters
     greedy_soup_params, model1 = greedy_soup_ensemble(models, model_names, valid_loader, variant, config, args, device)

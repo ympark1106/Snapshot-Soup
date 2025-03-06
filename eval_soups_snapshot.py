@@ -12,7 +12,7 @@ import glob
 from torch.cuda.amp.autocast_mode import autocast
 from utils import read_conf, validation_accuracy, ModelWithTemperature, validate, evaluate, calculate_ece, calculate_nll, validation_accuracy_lora, compute_aurc, compute_auroc, compute_fpr95
 import dino_variant
-from data import dataloader
+from data import dataloader, cifar10, cifar100, ham10000, eyepacs
 import rein
 from losses import DECE
 
@@ -115,7 +115,7 @@ def get_model_from_sd(state_dict, variant, config, device, args):
     model.to(device)
     
     return model
-        
+
 
 # Greedy soup model ensembling
 def greedy_soup_ece(models, model_names, valid_loader, device, variant, config, args):
@@ -269,11 +269,11 @@ def train():
     data_path = config['data_root']
     batch_size = int(config['batch_size'])
     checkpoint = args.checkpoint
-    num_workers = int(config['num_workers'])
-    save_paths = [ 
+    # num_workers = int(config['num_workers'])
+    # save_paths = [ 
         # os.path.join(config['save_path'], checkpoint, 'cyclic_checkpoint_epoch219.pth'),
         # os.path.join(config['save_path'], checkpoint, 'cyclic_checkpoint_epoch249.pth'),
-    ]
+    # ]
     
     
     checkpoint_dir = os.path.join(config['save_path'], checkpoint)
@@ -300,7 +300,8 @@ def train():
 
     
     # models = initialize_models(save_paths, variant, config, device, args)
-    _, valid_loader, test_loader = dataloader(args, data_path, batch_size)
+    _, valid_loader, test_loader = dataloader.setup_data_loaders(args, data_path, batch_size)
+    # valid_loader, test_loader = setup_data_loaders(args, data_path, batch_size)
     
     if args.soup == 'acc':
         print('Greedy soup by ACC')
@@ -343,13 +344,13 @@ def train():
     outputs = torch.cat(outputs).numpy()
     targets = torch.cat(targets).numpy().astype(int)
     evaluate(outputs, targets, verbose=True)
-        # Failure Prediction Metrics 계산
-    aurc = compute_aurc(outputs, targets)
+    # Failure Prediction Metrics 계산
+    # aurc = compute_aurc(outputs, targets)
     auroc = compute_auroc(outputs, targets)
     fpr95 = compute_fpr95(outputs, targets)
     
     print("\n🔹 Failure Prediction Metrics 🔹")
-    print(f"AURC (Area Under Risk-Coverage Curve): {aurc:.4f}")
+    # print(f"AURC (Area Under Risk-Coverage Curve): {aurc:.4f}")
     print(f"AUROC (Area Under ROC Curve): {auroc:.4f}")
     print(f"FPR@95TPR (False Positive Rate at 95% True Positive Rate): {fpr95:.4f}")
 

@@ -14,7 +14,7 @@ from utils import read_conf, validation_accuracy, ModelWithTemperature, validate
 import dino_variant
 from data import dataloader
 import rein
-from losses import DECE
+from losses import focal_loss
 
 # Model forward function
 def rein_forward(model, inputs):
@@ -92,143 +92,109 @@ def get_model_from_sd(state_dict, variant, config, device, args):
     return model
             
             
+def compute_sharpness(model, dataloader, loss_fn, device, epsilon=1e-3):
+    """
+    모델의 sharpness를 측정하는 함수.
+    - epsilon: perturbation 크기
+    """
+    sharpness_scores = []
+    model.eval()
+    
+    for inputs, targets in dataloader:
+        inputs, targets = inputs.to(device), targets.to(device)
+        
+        # 기존 gradient 저장
+        for param in model.parameters():
+            if param.requires_grad:
+                param.grad = None
+        
+        # Loss 계산 및 backward
+        outputs = model(inputs)
+        loss = loss_fn(outputs, targets)
+        loss.backward()
+
+        # 기존 weight 저장 및 perturbation 적용
+        original_params = {name: param.clone() for name, param in model.named_parameters()}
+        for param in model.parameters():
+            if param.requires_grad:
+                param.data += epsilon * param.grad.sign()
+
+        # Perturbed 모델에서 다시 loss 계산
+        perturbed_outputs = model(inputs)
+        perturbed_loss = loss_fn(perturbed_outputs, targets)
+        
+        # Sharpness 값 저장
+        sharpness_score = (perturbed_loss - loss).item()
+        sharpness_scores.append(sharpness_score)
+
+        # 원래 weight 복원
+        for name, param in model.named_parameters():
+            param.data = original_params[name].data
+
+    return sum(sharpness_scores) / len(sharpness_scores)  # 평균 sharpness 값 반환  
             
+def frobenius_distance(model1, model2):
+    """
+    두 모델의 Frobenius Norm Distance 계산
+    """
+    distance = 0.0
+    for (param1, param2) in zip(model1.parameters(), model2.parameters()):
+        distance += torch.norm(param1 - param2, p='fro').item()
+    return distance
 
-# Greedy soup model ensembling
-def greedy_soup_ece(models, model_names, valid_loader, device, variant, config, args):
-    # Calculate ECE for each model and sort them by ECE in ascending order (lower ECE is better)
-    ece_list = [validate(model, valid_loader, device, args) for model in models]
-    # print("ECE for each model:")
-    # print(ece_list)
-    model_ece_pairs = [(model, ece, name) for model, ece, name in zip(models, ece_list, model_names)]
-    sorted_models = sorted(model_ece_pairs, key=lambda x: x[1])
+def greedy_soup_weighted(models, model_names, valid_loader, device, variant, config, args):
+    """
+    Sharpness 기반 가중 평균을 적용한 Greedy Model Soup.
+    """
+    # loss_fn = nn.CrossEntropyLoss()
+    loss_fn = focal_loss.FocalLoss(gamma=3)
     
-    print("Sorted models with ECE performance:")
-    for model, ece, name in sorted_models:
-        print(f'Model: {name}, ECE: {ece}')
+    # 모델별 sharpness 측정
+    sharpness_scores = [compute_sharpness(model, valid_loader, loss_fn, device) for model in models]    
 
-    best_ece = sorted_models[0][1]
-    greedy_soup_params = sorted_models[0][0].state_dict()
-    greedy_soup_ingredients = [sorted_models[0][0]]
     
-    TOLERANCE = (sorted_models[-1][1] - sorted_models[0][1]) / 2
-    TOLERANCE = 0
+    # 모델 간 Frobenius 거리 측정
+    num_models = len(models)
+    distance_matrix = np.zeros((num_models, num_models))
 
-    print(f'Tolerance: {TOLERANCE}')
+    for i in range(num_models):
+        for j in range(i + 1, num_models):
+            distance_matrix[i, j] = frobenius_distance(models[i], models[j])
+            distance_matrix[j, i] = distance_matrix[i, j]
 
-    for i in range(1, len(models)):
-        new_ingredient_params = sorted_models[i][0].state_dict()
-        num_ingredients = len(greedy_soup_ingredients)
-        print(f'Adding ingredient {i+1} ({sorted_models[i][2]}) to the greedy soup. Num ingredients: {num_ingredients}')
-        
-        # Calculate potential new parameters with the new ingredient
-        potential_greedy_soup_params = {
-            k: greedy_soup_params[k].clone() * (num_ingredients / (num_ingredients + 1)) + 
-               new_ingredient_params[k].clone() * (1. / (num_ingredients + 1))
-            for k in new_ingredient_params
-        }
-
-        temp_model = get_model_from_sd(potential_greedy_soup_params, variant, config, device, args)
-        temp_model.eval()
-        
-        # Evaluate the potential greedy soup model
-        outputs, targets = [], []
-        with torch.no_grad():
-            for inputs, target in valid_loader:
-                inputs, target = inputs.to(device), target.to(device)
-                if args.type == 'rein':
-                    output = rein_forward(temp_model, inputs)
-                    # print(output.shape)  
-                elif args.type == 'lora':
-                    with autocast(enabled=True):
-                        output = lora_forward(temp_model, inputs)
-        
-                outputs.append(output.cpu())
-                targets.append(target.cpu())
-        outputs = torch.cat(outputs).numpy()
-        targets = torch.cat(targets).numpy().astype(int)
-        held_out_val_ece = calculate_ece(outputs, targets)
-        
-        print(f'Potential greedy soup ECE: {held_out_val_ece}, best ECE so far: {best_ece}.')
-        
-        # Add new ingredient to the greedy soup if it improves ECE or is within tolerance
-        if held_out_val_ece < best_ece + TOLERANCE:
-            best_ece = held_out_val_ece
-            greedy_soup_ingredients.append(sorted_models[i][0])
-            greedy_soup_params = potential_greedy_soup_params
-            print(f'<Added new ingredient to soup. Total ingredients: {len(greedy_soup_ingredients)}>\n')
-        else:
-            print(f'<No improvement. Reverting to best-known parameters.>\n')
-
-
-    final_model = get_model_from_sd(greedy_soup_params, variant, config, device, args)
-        
-    return greedy_soup_params, final_model
-
-
-def greedy_soup_acc(models, model_names, valid_loader, device, variant, config, args):
-    # Evaluate and sort models by validation accuracy
-    if args.type == 'rein':
-        model_accuracies = [(model, validation_accuracy(model, valid_loader, device), name) for model, name in zip(models, model_names)]
-    elif args.type == 'lora':
-        model_accuracies = [(model, validation_accuracy_lora(model, valid_loader, device), name) for model, name in zip(models, model_names)]
+    # 모델들을 Clustering하여 비슷한 Basin끼리 묶음
+    from sklearn.cluster import AgglomerativeClustering
     
-    # Sort models based on accuracy
-    sorted_models = sorted(model_accuracies, key=lambda x: x[1], reverse=True)
-    
-    # Print sorted models with their names and accuracies
-    print("Sorted models by accuracy:")
-    for model, acc, name in sorted_models:
-        print(f'Model: {name}, Accuracy: {acc}')
-    print("\n")
-    
-    # Initialize greedy soup with the highest-performing model
-    max_accuracy = sorted_models[0][1]
-    greedy_soup_params = sorted_models[0][0].state_dict()  # Best model's initial parameters
-    greedy_soup_ingredients = [sorted_models[0][0]] 
+    clustering = AgglomerativeClustering(n_clusters=None, distance_threshold=1.0, affinity='precomputed', linkage='average')
+    cluster_labels = clustering.fit_predict(distance_matrix)
 
-    for i in range(1, len(sorted_models)):
-        print(f'Testing model {i+1} ({sorted_models[i][2]}) of {len(sorted_models)}')
-        
-        # previous_greedy_soup_params = {k: v.clone() for k, v in greedy_soup_params.items()}
-        
-        # New model parameters to test as an additional ingredient
-        new_ingredient_params = sorted_models[i][0].state_dict()
-        num_ingredients = len(greedy_soup_ingredients)
-        print(f'Adding ingredient {i+1} ({sorted_models[i][2]}) to the greedy soup. Num ingredients: {num_ingredients}')    
+    # Greedy Soup 초기화 (가장 좋은 모델을 기준으로 시작)
+    best_model_idx = np.argmin(sharpness_scores)  # Sharpness가 가장 낮은 (flat한) 모델 선택
+    best_model = models[best_model_idx]
+    greedy_soup_params = best_model.state_dict()
     
-        # Create potential new soup parameters by averaging with the new ingredient
-        potential_greedy_soup_params = {
-            k: greedy_soup_params[k].clone() * (num_ingredients / (num_ingredients + 1)) +
-               new_ingredient_params[k].clone() * (1. / (num_ingredients + 1))
-            for k in new_ingredient_params
-        }
-        
-        # Load the new potential parameters into the base model for evaluation
-        temp_model = get_model_from_sd(potential_greedy_soup_params, variant, config, device, args)
-        temp_model.eval()
-        
-        # Calculate validation accuracy with the potential new soup parameters
-        if args.type == 'rein':
-            held_out_val_accuracy = validation_accuracy(temp_model, valid_loader, device, mode='rein')
-        elif args.type == 'lora':
-            held_out_val_accuracy = validation_accuracy_lora(temp_model, valid_loader, device)
-        
-        print(f'Held-out validation accuracy: {held_out_val_accuracy}, best accuracy so far: {max_accuracy}.\n')
-        
-        # Update greedy soup if accuracy improves, otherwise revert to original parameters
-        if held_out_val_accuracy > max_accuracy:
-            greedy_soup_ingredients.append(sorted_models[i][0])
-            max_accuracy = held_out_val_accuracy
-            greedy_soup_params = potential_greedy_soup_params  # Save the improved parameters
-            print(f'[New greedy soup ingredient added. Number of ingredients: {len(greedy_soup_ingredients)}]\n')
-        else:
-            print(f'[No improvement. Reverting to best-known parameters.]\n')
-         
-        final_model = get_model_from_sd(greedy_soup_params, variant, config, device, args)
-        
+    # Sharpness 기반 가중치 계산
+    lambda_val = 0.5  # Hyperparameter (Sharpness에 대한 감도 조절)
+    weights = np.exp(-lambda_val * np.array(sharpness_scores))
+    weights /= np.sum(weights)  # 정규화
 
-    return greedy_soup_params, final_model
+    print("Applying weighted averaging with the following weights:")
+    print(weights)
+
+    # 가중 평균 수행
+    weighted_avg_params = {k: torch.zeros_like(v) for k, v in greedy_soup_params.items()}
+
+    for i, model in enumerate(models):
+        model_params = model.state_dict()
+        for k in model_params:
+            weighted_avg_params[k] += weights[i] * model_params[k]
+
+    # 최종 Model 생성
+    final_model = get_model_from_sd(weighted_avg_params, variant, config, device, args)
+    final_model.to(device)
+    
+    return weighted_avg_params, final_model
+
 
 
 def train():
@@ -238,7 +204,7 @@ def train():
     parser.add_argument('--netsize', default='s', type=str)
     parser.add_argument('--type', '-t', default='rein', type=str)
     parser.add_argument('--checkpoint', '-c', type=str)
-    parser.add_argument('--soup', '-s', type=str, default='acc')
+    # parser.add_argument('--soup', '-s', type=str, default='acc')
     args = parser.parse_args()
 
     config = read_conf(os.path.join('conf', 'data', f'{args.data}.yaml'))
@@ -277,14 +243,11 @@ def train():
 
     
     # models = initialize_models(save_paths, variant, config, device, args)
-    _, valid_loader, test_loader = dataloader(args, data_path, batch_size)
+    _, valid_loader, test_loader = dataloader.setup_data_loaders(args, data_path, batch_size)
     
-    if args.soup == 'acc':
-        print('Greedy soup by ACC')
-        greedy_soup_params, model = greedy_soup_acc(models, model_names, valid_loader, device, variant, config, args)
-    elif args.soup == 'ece':
-        print('Greedy soup by ECE')
-        greedy_soup_params, model = greedy_soup_ece(models, model_names, valid_loader, device, variant, config, args)
+    print('Greedy soup')
+    greedy_soup_params, model = greedy_soup_weighted(models, model_names, valid_loader, device, variant, config, args)
+
     
 
     model = get_model_from_sd(greedy_soup_params, variant, config, device, args)
@@ -320,13 +283,13 @@ def train():
     outputs = torch.cat(outputs).numpy()
     targets = torch.cat(targets).numpy().astype(int)
     evaluate(outputs, targets, verbose=True)
-        # Failure Prediction Metrics 계산
-    aurc = compute_aurc(outputs, targets)
+    # Failure Prediction Metrics 계산
+    # aurc = compute_aurc(outputs, targets)
     auroc = compute_auroc(outputs, targets)
     fpr95 = compute_fpr95(outputs, targets)
     
     print("\n🔹 Failure Prediction Metrics 🔹")
-    print(f"AURC (Area Under Risk-Coverage Curve): {aurc:.4f}")
+    # print(f"AURC (Area Under Risk-Coverage Curve): {aurc:.4f}")
     print(f"AUROC (Area Under ROC Curve): {auroc:.4f}")
     print(f"FPR@95TPR (False Positive Rate at 95% True Positive Rate): {fpr95:.4f}")
 

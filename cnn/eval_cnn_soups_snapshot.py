@@ -207,7 +207,7 @@ def train():
         models.append(model)
 
     
-    _, valid_loader, test_loader = dataloader(args, data_path, batch_size)
+    _, valid_loader, test_loader = dataloader.setup_data_loaders(args, data_path, batch_size)
     
     if args.soup == 'acc':
         print('Greedy soup by ACC')
