@@ -82,7 +82,7 @@ def train():
 
 
     if args.data == 'cifar10':
-        test_loader = cifar10.get_test_loader(batch_size, shuffle=True, num_workers=4, pin_memory=True, get_val_temp=0, data_dir=data_path)
+        test_loader = cifar10.get_test_loader(batch_size, shuffle=True, num_workers=4, pin_memory=True, data_dir=data_path)
     elif args.data == 'cifar100':
         test_loader = cifar100.get_test_loader(data_dir=data_path, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True)
     elif args.data == 'ham10000':
@@ -131,7 +131,7 @@ def train():
 
 
     state_dict = torch.load(os.path.join(save_path, 'last.pth.tar'), map_location=device)['state_dict']
-    # state_dict = torch.load(os.path.join(save_path, 'cyclic_checkpoint_epoch669.pth'), map_location=device)
+    # state_dict = torch.load(os.path.join(save_path, 'cyclic_checkpoint_epoch219.pth'), map_location=device)
     # state_dict = torch.load(os.path.join(save_path, 'checkpoint_epoch_70.pth'), map_location='cpu')
     model.load_state_dict(state_dict, strict=True)
     
@@ -174,17 +174,17 @@ def train():
     outputs = torch.cat(outputs).numpy()
     targets = torch.cat(targets).numpy()
     targets = targets.astype(int)
-    # evaluate(outputs, targets, verbose=True)
+    evaluate(outputs, targets, verbose=True)
     
     # Failure Prediction Metrics 계산
     # aurc = compute_aurc(outputs, targets)
-    auroc = compute_auroc(outputs, targets)
-    fpr95 = compute_fpr95(outputs, targets)
+    # auroc = compute_auroc(outputs, targets)
+    # fpr95 = compute_fpr95(outputs, targets)
     
-    print("\n🔹 Failure Prediction Metrics 🔹")
+    # print("\n🔹 Failure Prediction Metrics 🔹")
     # print(f"AURC (Area Under Risk-Coverage Curve): {aurc:.4f}")
-    print(f"AUROC (Area Under ROC Curve): {auroc:.4f}")
-    print(f"FPR@95TPR (False Positive Rate at 95% True Positive Rate): {fpr95:.4f}")
+    # print(f"AUROC (Area Under ROC Curve): {auroc:.4f}")
+    # print(f"FPR@95TPR (False Positive Rate at 95% True Positive Rate): {fpr95:.4f}")
 
 
 

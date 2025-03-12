@@ -19,6 +19,12 @@ def lora_forward(model, inputs):
         output = torch.softmax(output, dim=1)
     return output
 
+def resnet_forward(model, inputs):
+    output = model(inputs)
+    output = torch.softmax(output, dim=1)
+    return output
+
+
 def validate(model, valid_loader, device, args):
     """
     Perform inference on the test_loader using the given model and evaluate results.
@@ -46,6 +52,9 @@ def validate(model, valid_loader, device, args):
             elif args.type == 'lora':
                 with autocast(enabled=True):
                     output = lora_forward(model, inputs)
+            if args.type == 'resnet':
+                output = resnet_forward(model, inputs)
+
             
             # Append results
             outputs.append(output.cpu())

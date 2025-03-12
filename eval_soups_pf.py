@@ -214,14 +214,23 @@ def train():
     batch_size = int(config['batch_size'])
     checkpoint = args.checkpoint
     # num_workers = int(config['num_workers'])
-    save_paths = [ 
-        # os.path.join(config['save_path'], checkpoint, 'cyclic_checkpoint_epoch219.pth'),
-        # os.path.join(config['save_path'], checkpoint, 'cyclic_checkpoint_epoch249.pth'),
+    save_paths = [
+        os.path.join(config['save_path'], 'reins_focal_1'),
+        os.path.join(config['save_path'], 'reins_focal_2'),
+        os.path.join(config['save_path'], 'reins_focal_3'),
+        os.path.join(config['save_path'], 'reins_focal_4'),
+        os.path.join(config['save_path'], 'reins_focal_5'),
+        os.path.join(config['save_path'], 'reins_focal_6'),
+        os.path.join(config['save_path'], 'reins_focal_7'),
+        os.path.join(config['save_path'], 'reins_focal_8'),
+        os.path.join(config['save_path'], 'reins_focal_9'),
+        os.path.join(config['save_path'], 'reins_focal_10'),
     ]
     
     
-    checkpoint_dir = os.path.join(config['save_path'], checkpoint)
-    save_paths = sorted(glob.glob(os.path.join(checkpoint_dir, "cyclic_checkpoint_epoch*.pth")))
+    
+    # checkpoint_dir = os.path.join(config['save_path'], checkpoint)
+    # save_paths = sorted(glob.glob(os.path.join(checkpoint_dir, "cyclic_checkpoint_epoch*.pth")))
 
     # print(save_paths) 
     print(f'Found {len(save_paths)} models to soup.')
@@ -236,12 +245,11 @@ def train():
     
     for save_path in save_paths:
         model = initialize_model(variant, config, device, args)
-        state_dict = torch.load(save_path, map_location='cpu')
-        model.load_state_dict(state_dict, strict=True) # 수정
+        state_dict = torch.load(os.path.join(save_path, 'last.pth.tar'), map_location=device)['state_dict']
+        model.load_state_dict(state_dict, strict=True)
         model.to(device)
         model.eval()
         models.append(model)
-
     
     # models = initialize_models(save_paths, variant, config, device, args)
     _, valid_loader, test_loader = dataloader.setup_data_loaders(args, data_path, batch_size)

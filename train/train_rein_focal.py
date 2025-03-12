@@ -48,8 +48,8 @@ def train():
     device = 'cuda:'+args.gpu
     save_path = os.path.join(config['save_path'], args.save_path)
     data_path = config['data_root']
-    batch_size = int(config['batch_size'])
-    # batch_size = 64
+    # batch_size = int(config['batch_size'])
+    batch_size = 128
     # max_epoch = int(config['epoch'])
     max_epoch = 100
     num_workers = int(config['num_workers'])

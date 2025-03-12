@@ -20,7 +20,7 @@ import rein
 
 import dino_variant
 from sklearn.metrics import f1_score
-from data import cifar100, ham10000, eyepacs
+from data import cifar100, ham10000, eyepacs, cifar10
 from losses import RankMixup_MNDCG, RankMixup_MRL, focal_loss, focal_loss_adaptive_gamma
 
 def set_requires_grad(model, layers_to_train):
@@ -50,8 +50,8 @@ def train():
     if not os.path.exists(save_path):
         os.mkdir(save_path)
 
-    # if args.data == 'cifar10':
-    #     train_loader, valid_loader = cifar10.get_train_valid_loader(batch_size, augment=True, random_seed=42, valid_size=0.1, shuffle=True, num_workers=4, pin_memory=True, get_val_temp=0, data_dir=data_path)
+    if args.data == 'cifar10':
+        train_loader, valid_loader = cifar10.get_train_valid_loader(batch_size, augment=True, random_seed=42, valid_size=0.1, shuffle=True, num_workers=4, pin_memory=True, get_val_temp=0, data_dir=data_path)
     if args.data == 'cifar100':
         train_loader, valid_loader = cifar100.get_train_valid_loader(data_dir=data_path, augment=True, batch_size=batch_size, valid_size=0.1, random_seed=42, shuffle=True, num_workers=4, pin_memory=True)
     # elif args.data == 'cub':

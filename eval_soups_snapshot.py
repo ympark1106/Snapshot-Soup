@@ -12,7 +12,7 @@ import glob
 from torch.cuda.amp.autocast_mode import autocast
 from utils import read_conf, validation_accuracy, ModelWithTemperature, validate, evaluate, calculate_ece, calculate_nll, validation_accuracy_lora, compute_aurc, compute_auroc, compute_fpr95
 import dino_variant
-from data import dataloader, cifar10, cifar100, ham10000, eyepacs
+from data import dataloader
 import rein
 from losses import DECE
 
@@ -54,6 +54,7 @@ def lora_forward(model, inputs):
 #         model.to(device)
         
 #     return model
+
 
 def initialize_model(variant, config, device, args):
     model_load = dino_variant._small_dino
@@ -256,11 +257,11 @@ def greedy_soup_acc(models, model_names, valid_loader, device, variant, config, 
 
 def train():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--data', '-d', type=str, default='cifar100')
+    parser.add_argument('--data', '-d', type=str, default='eyepacs')
     parser.add_argument('--gpu', '-g', default='0', type=str)
     parser.add_argument('--netsize', default='s', type=str)
     parser.add_argument('--type', '-t', default='rein', type=str)
-    parser.add_argument('--checkpoint', '-c', type=str)
+    parser.add_argument('--checkpoint', '-c', type=str, default='reins_hydra_10')
     parser.add_argument('--soup', '-s', type=str, default='acc')
     args = parser.parse_args()
 
@@ -300,8 +301,9 @@ def train():
 
     
     # models = initialize_models(save_paths, variant, config, device, args)
-    _, valid_loader, test_loader = dataloader.setup_data_loaders(args, data_path, batch_size)
-    # valid_loader, test_loader = setup_data_loaders(args, data_path, batch_size)
+    # train_loader, valid_loader, test_loader = dataloader.setup_data_loaders(args, data_path, batch_size)
+    train_loader, valid_loader, test_loader = dataloader.setup_data_loaders(args, data_path, batch_size)
+
     
     if args.soup == 'acc':
         print('Greedy soup by ACC')
@@ -346,13 +348,13 @@ def train():
     evaluate(outputs, targets, verbose=True)
     # Failure Prediction Metrics 계산
     # aurc = compute_aurc(outputs, targets)
-    auroc = compute_auroc(outputs, targets)
-    fpr95 = compute_fpr95(outputs, targets)
+    # auroc = compute_auroc(outputs, targets)
+    # fpr95 = compute_fpr95(outputs, targets)
     
-    print("\n🔹 Failure Prediction Metrics 🔹")
+    # print("\n🔹 Failure Prediction Metrics 🔹")
     # print(f"AURC (Area Under Risk-Coverage Curve): {aurc:.4f}")
-    print(f"AUROC (Area Under ROC Curve): {auroc:.4f}")
-    print(f"FPR@95TPR (False Positive Rate at 95% True Positive Rate): {fpr95:.4f}")
+    # print(f"AUROC (Area Under ROC Curve): {auroc:.4f}")
+    # print(f"FPR@95TPR (False Positive Rate at 95% True Positive Rate): {fpr95:.4f}")
 
 if __name__ == '__main__':
     train()

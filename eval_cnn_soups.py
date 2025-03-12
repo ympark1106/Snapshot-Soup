@@ -1,19 +1,16 @@
 import warnings
 warnings.filterwarnings("ignore", message="xFormers is not available")
-import contextlib
-import io
-import sys
-sys.path.append("/SSDe/youmin_park/adapter-weight-ensemble/")
+
 import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6,7"
 import torch
 import torch.nn as nn
 import argparse
 import numpy as np
-import glob
-from torchvision import models
 from torch.cuda.amp.autocast_mode import autocast
+from torchvision import models
 from utils import read_conf, validation_accuracy, ModelWithTemperature, validate, evaluate, calculate_ece, calculate_nll, validation_accuracy_lora, compute_aurc, compute_auroc, compute_fpr95
+
 from data import dataloader
 import rein
 
@@ -33,7 +30,18 @@ def get_model_from_sd(state_dict, config, device, args):
     
     return model
 
-# Greedy soup model ensembling
+
+# Validation and test accuracy calculation
+def validate_model(model, valid_loader, device, mode):
+    return validation_accuracy(model, valid_loader, device, mode=mode)
+
+# Sort models by accuracy
+# def sort_models_by_accuracy(models, valid_loader, device, mode):
+#     model_accuracies = [(model, validate_model(model, valid_loader, device, mode)) for model in models]
+#     sorted_models = sorted(model_accuracies, key=lambda x: x[1], reverse=True)  # Sort by accuracy (descending)
+#     return sorted_models
+
+# Greedy soup ensemble function
 def greedy_soup_ece(models, model_names, valid_loader, device, config, args):
     # Calculate ECE for each model and sort them by ECE in ascending order (lower ECE is better)
     ece_list = [validate(model, valid_loader, device, args) for model in models]
@@ -51,7 +59,7 @@ def greedy_soup_ece(models, model_names, valid_loader, device, config, args):
     greedy_soup_ingredients = [sorted_models[0][0]]
     
     TOLERANCE = (sorted_models[-1][1] - sorted_models[0][1]) / 2
-    TOLERANCE = 0
+    TOLERANCE = 1
 
     print(f'Tolerance: {TOLERANCE}')
 
@@ -160,73 +168,66 @@ def greedy_soup_acc(models, model_names, valid_loader, device, config, args):
     return greedy_soup_params, final_model
 
 
+
 def train():
     parser = argparse.ArgumentParser()
     parser.add_argument('--data', '-d', type=str, default='cifar100')
     parser.add_argument('--gpu', '-g', default='0', type=str)
     parser.add_argument('--netsize', default='s', type=str)
-    parser.add_argument('--type', '-t', default='rein', type=str)
-    parser.add_argument('--checkpoint', '-c', type=str)
+    parser.add_argument('--type', '-t', default='resnet', type=str)
     parser.add_argument('--soup', '-s', type=str, default='acc')
     args = parser.parse_args()
 
     config = read_conf(os.path.join('conf', 'data', f'{args.data}.yaml'))
     device = torch.device(f'cuda:{args.gpu}' if torch.cuda.is_available() else 'cpu')
     data_path = config['data_root']
-    # batch_size = int(config['batch_size'])
-    batch_size = 128
-    checkpoint = args.checkpoint
-    num_workers = int(config['num_workers'])
+    batch_size = int(config['batch_size'])
+    num_workers = int(config['num_workers'])   
     
-    save_paths = [ 
-        # os.path.join(config['save_path'], checkpoint, 'cyclic_checkpoint_epoch219.pth'),
-        # os.path.join(config['save_path'], checkpoint, 'cyclic_checkpoint_epoch249.pth'),
+    save_paths = [
+        os.path.join(config['save_path'], 'resnet_1'),
+        os.path.join(config['save_path'], 'resnet_2'),
+        os.path.join(config['save_path'], 'resnet_3'),
+        os.path.join(config['save_path'], 'resnet_4'),
+        os.path.join(config['save_path'], 'resnet_5'),
+        os.path.join(config['save_path'], 'resnet_6'),
+        os.path.join(config['save_path'], 'resnet_7'),
+        os.path.join(config['save_path'], 'resnet_8'),
+        os.path.join(config['save_path'], 'resnet_9'),
+        os.path.join(config['save_path'], 'resnet_10'),
     ]
     
-    
-    checkpoint_dir = os.path.join(config['save_path'], checkpoint)
-    save_paths = sorted(glob.glob(os.path.join(checkpoint_dir, "cyclic_checkpoint_epoch*.pth")))
-
-    # print(save_paths) 
-    print(f'Found {len(save_paths)} models to soup.')
-    
-    
     model_names = [os.path.basename(path) for path in save_paths]
-
     
     models = []
 
     
     for save_path in save_paths:
         model = initialize_model(config, device, args)
-        state_dict = torch.load(save_path, map_location='cpu')
-        model.load_state_dict(state_dict, strict=True) # 수정
+        state_dict = torch.load(os.path.join(save_path, 'last.pth.tar'), map_location=device)['state_dict']
+        model.load_state_dict(state_dict, strict=True)
         model.to(device)
         model.eval()
         models.append(model)
-
     
     _, valid_loader, test_loader = dataloader.setup_data_loaders(args, data_path, batch_size)
-    
+
     if args.soup == 'acc':
         print('Greedy soup by ACC')
         greedy_soup_params, model = greedy_soup_acc(models, model_names, valid_loader, device, config, args)
     elif args.soup == 'ece':
         print('Greedy soup by ECE')
         greedy_soup_params, model = greedy_soup_ece(models, model_names, valid_loader, device, config, args)
-    
 
-    model = get_model_from_sd(greedy_soup_params, config, device, args)
-    model.eval()
-    
+    # Evaluate the final model on the test set
+    model.load_state_dict(greedy_soup_params)
+    model.eval() 
+           
 
-    ## validation 
-    if args.type == 'lora':
-        test_accuracy = validation_accuracy_lora(model, test_loader, device)
-    else:
-        test_accuracy = validation_accuracy(model, test_loader, device, mode=args.type)
-    print("\n🔹 Accuracy Metrics 🔹")
-    print('test acc:', test_accuracy)
+    test_accuracy = validation_accuracy(model, test_loader, device, mode=args.type)
+
+    print("\n🔹 Accuracy Metrics 🔹")  
+    print('Test accuracy:', test_accuracy)
 
     outputs, targets = [], []
     with torch.no_grad():
@@ -242,6 +243,15 @@ def train():
     outputs = torch.cat(outputs).numpy()
     targets = torch.cat(targets).numpy().astype(int)
     evaluate(outputs, targets, verbose=True)
+        # Failure Prediction Metrics 계산
+    # aurc = compute_aurc(outputs, targets)
+    # auroc = compute_auroc(outputs, targets)
+    # fpr95 = compute_fpr95(outputs, targets)
+    
+    # print("\n🔹 Failure Prediction Metrics 🔹")
+    # print(f"AURC (Area Under Risk-Coverage Curve): {aurc:.4f}")
+    # print(f"AUROC (Area Under ROC Curve): {auroc:.4f}")
+    # print(f"FPR@95TPR (False Positive Rate at 95% True Positive Rate): {fpr95:.4f}")
 
 if __name__ == '__main__':
     train()

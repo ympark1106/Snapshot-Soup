@@ -1,4 +1,4 @@
-name: eyePACS
+name: eyepacs
 
 data_root: /SSDe/youmin_park/dataset/eyepacs
 batch_size: 128

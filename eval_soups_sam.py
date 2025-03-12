@@ -143,49 +143,117 @@ def frobenius_distance(model1, model2):
         distance += torch.norm(param1 - param2, p='fro').item()
     return distance
 
-def greedy_soup_weighted(models, model_names, valid_loader, device, variant, config, args):
+# def greedy_soup_weighted(models, model_names, valid_loader, device, variant, config, args):
+#     """
+#     Sharpness 기반 가중 평균을 적용한 Greedy Model Soup.
+#     """
+#     # loss_fn = nn.CrossEntropyLoss()
+#     loss_fn = focal_loss.FocalLoss(gamma=3)
+    
+#     # 모델별 sharpness 측정
+#     sharpness_scores = [compute_sharpness(model, valid_loader, loss_fn, device) for model in models]    
+
+    
+#     # 모델 간 Frobenius 거리 측정
+#     num_models = len(models)
+#     distance_matrix = np.zeros((num_models, num_models))
+
+#     for i in range(num_models):
+#         for j in range(i + 1, num_models):
+#             distance_matrix[i, j] = frobenius_distance(models[i], models[j])
+#             distance_matrix[j, i] = distance_matrix[i, j]
+
+#     # 모델들을 Clustering하여 비슷한 Basin끼리 묶음
+#     from sklearn.cluster import AgglomerativeClustering
+    
+#     clustering = AgglomerativeClustering(n_clusters=None, distance_threshold=1.0, metric='precomputed', linkage='average')
+#     cluster_labels = clustering.fit_predict(distance_matrix)
+
+#     # Greedy Soup 초기화 (가장 좋은 모델을 기준으로 시작)
+#     best_model_idx = np.argmin(sharpness_scores)  # Sharpness가 가장 낮은 (flat한) 모델 선택
+#     best_model = models[best_model_idx]
+#     greedy_soup_params = best_model.state_dict()
+    
+#     # Sharpness 기반 가중치 계산
+#     lambda_val = 0.5  # Hyperparameter (Sharpness에 대한 감도 조절)
+#     weights = np.exp(-lambda_val * np.array(sharpness_scores))
+#     weights /= np.sum(weights)  # 정규화
+
+#     print("Applying weighted averaging with the following weights:")
+#     print(weights)
+
+#     # 가중 평균 수행
+#     weighted_avg_params = {k: torch.zeros_like(v) for k, v in greedy_soup_params.items()}
+
+#     for i, model in enumerate(models):
+#         model_params = model.state_dict()
+#         for k in model_params:
+#             weighted_avg_params[k] += weights[i] * model_params[k]
+
+#     # 최종 Model 생성
+#     final_model = get_model_from_sd(weighted_avg_params, variant, config, device, args)
+#     final_model.to(device)
+    
+#     return weighted_avg_params, final_model
+
+
+def select_low_sharpness_models(models, sharpness_scores, threshold=0.3):
     """
-    Sharpness 기반 가중 평균을 적용한 Greedy Model Soup.
+    Sharpness가 특정 Threshold 이하인 모델만 선택하는 함수.
+    - threshold: 상위 몇 퍼센트까지 제외할지 결정 (예: 0.3이면 상위 30%를 제외)
     """
-    # loss_fn = nn.CrossEntropyLoss()
+    num_models = len(models)
+    
+    # Sharpness를 기준으로 정렬하여 상위 threshold% 모델을 제외
+    threshold_value = np.percentile(sharpness_scores, threshold * 100)
+    selected_indices = [i for i in range(num_models) if sharpness_scores[i] <= threshold_value]
+
+    selected_models = [models[i] for i in selected_indices]
+    selected_sharpness = [sharpness_scores[i] for i in selected_indices]
+
+    print(f"🔹 {len(selected_models)} models selected out of {num_models} (Threshold: {threshold_value:.4f})")
+    
+    return selected_models, selected_sharpness
+
+def thresholded_soup(models, model_names, valid_loader, device, variant, config, args, threshold=0.3):
+    """
+    Sharpness 기반 Thresholding 후, 최적의 Model Soup을 구성하는 함수.
+    """
     loss_fn = focal_loss.FocalLoss(gamma=3)
     
     # 모델별 sharpness 측정
-    sharpness_scores = [compute_sharpness(model, valid_loader, loss_fn, device) for model in models]    
+    sharpness_scores = [compute_sharpness(model, valid_loader, loss_fn, device) for model in models]
+            
+    # 모델과 Sharpness를 함께 저장 (모델, Sharpness 점수, 모델명) 튜플 리스트 생성
+    model_sharpness_pairs = list(zip(models, sharpness_scores, model_names))
 
-    
-    # 모델 간 Frobenius 거리 측정
-    num_models = len(models)
-    distance_matrix = np.zeros((num_models, num_models))
+    # Sharpness가 높은 모델 순서대로 정렬
+    sorted_models = sorted(model_sharpness_pairs, key=lambda x: x[1], reverse=True)
 
-    for i in range(num_models):
-        for j in range(i + 1, num_models):
-            distance_matrix[i, j] = frobenius_distance(models[i], models[j])
-            distance_matrix[j, i] = distance_matrix[i, j]
 
-    # 모델들을 Clustering하여 비슷한 Basin끼리 묶음
-    from sklearn.cluster import AgglomerativeClustering
-    
-    clustering = AgglomerativeClustering(n_clusters=None, distance_threshold=1.0, metric='precomputed', linkage='average')
-    cluster_labels = clustering.fit_predict(distance_matrix)
+    # Print sorted models with their names and accuracies
+    print("Sorted models by sharpness:")
+    for model, sharpness, name in sorted_models:
+        print(f'Model: {name}, SHarpness: {sharpness}')
+    print("\n")
 
-    # Greedy Soup 초기화 (가장 좋은 모델을 기준으로 시작)
-    best_model_idx = np.argmin(sharpness_scores)  # Sharpness가 가장 낮은 (flat한) 모델 선택
-    best_model = models[best_model_idx]
-    greedy_soup_params = best_model.state_dict()
-    
-    # Sharpness 기반 가중치 계산
-    lambda_val = 0.5  # Hyperparameter (Sharpness에 대한 감도 조절)
-    weights = np.exp(-lambda_val * np.array(sharpness_scores))
+    # Thresholding 적용 (Sharp한 모델 제외)
+    selected_models, selected_sharpness = select_low_sharpness_models(models, sharpness_scores, threshold)
+
+    if len(selected_models) == 0:
+        raise ValueError("No models selected after thresholding. Try reducing the threshold value.")
+
+    # Weighted Average 적용
+    lambda_val = 0.5  # Sharpness에 대한 감도 조절
+    weights = np.exp(-lambda_val * np.array(selected_sharpness))
     weights /= np.sum(weights)  # 정규화
 
     print("Applying weighted averaging with the following weights:")
     print(weights)
 
-    # 가중 평균 수행
-    weighted_avg_params = {k: torch.zeros_like(v) for k, v in greedy_soup_params.items()}
+    weighted_avg_params = {k: torch.zeros_like(v) for k, v in selected_models[0].state_dict().items()}
 
-    for i, model in enumerate(models):
+    for i, model in enumerate(selected_models):
         model_params = model.state_dict()
         for k in model_params:
             weighted_avg_params[k] += weights[i] * model_params[k]
@@ -195,7 +263,6 @@ def greedy_soup_weighted(models, model_names, valid_loader, device, variant, con
     final_model.to(device)
     
     return weighted_avg_params, final_model
-
 
 
 def train():
@@ -214,14 +281,23 @@ def train():
     batch_size = int(config['batch_size'])
     checkpoint = args.checkpoint
     # num_workers = int(config['num_workers'])
-    save_paths = [ 
-        # os.path.join(config['save_path'], checkpoint, 'cyclic_checkpoint_epoch219.pth'),
-        # os.path.join(config['save_path'], checkpoint, 'cyclic_checkpoint_epoch249.pth'),
+    save_paths = [
+        os.path.join(config['save_path'], 'reins_focal_1'),
+        os.path.join(config['save_path'], 'reins_focal_2'),
+        os.path.join(config['save_path'], 'reins_focal_3'),
+        os.path.join(config['save_path'], 'reins_focal_4'),
+        os.path.join(config['save_path'], 'reins_focal_5'),
+        os.path.join(config['save_path'], 'reins_focal_6'),
+        os.path.join(config['save_path'], 'reins_focal_7'),
+        os.path.join(config['save_path'], 'reins_focal_8'),
+        os.path.join(config['save_path'], 'reins_focal_9'),
+        os.path.join(config['save_path'], 'reins_focal_10'),
     ]
     
     
-    checkpoint_dir = os.path.join(config['save_path'], checkpoint)
-    save_paths = sorted(glob.glob(os.path.join(checkpoint_dir, "cyclic_checkpoint_epoch*.pth")))
+    
+    # checkpoint_dir = os.path.join(config['save_path'], checkpoint)
+    # save_paths = sorted(glob.glob(os.path.join(checkpoint_dir, "cyclic_checkpoint_epoch*.pth")))
 
     # print(save_paths) 
     print(f'Found {len(save_paths)} models to soup.')
@@ -236,23 +312,28 @@ def train():
     
     for save_path in save_paths:
         model = initialize_model(variant, config, device, args)
-        state_dict = torch.load(save_path, map_location='cpu')
-        model.load_state_dict(state_dict, strict=True) # 수정
+        state_dict = torch.load(os.path.join(save_path, 'last.pth.tar'), map_location=device)['state_dict']
+        model.load_state_dict(state_dict, strict=True)
         model.to(device)
         model.eval()
         models.append(model)
-
     
     # models = initialize_models(save_paths, variant, config, device, args)
     _, valid_loader, test_loader = dataloader.setup_data_loaders(args, data_path, batch_size)
     
-    print('Greedy soup')
-    greedy_soup_params, model = greedy_soup_weighted(models, model_names, valid_loader, device, variant, config, args)
+    # print('Greedy soup')
+    # greedy_soup_params, model = greedy_soup_weighted(models, model_names, valid_loader, device, variant, config, args)
+    # model = get_model_from_sd(greedy_soup_params, variant, config, device, args)
+    # model.eval()    
 
     
-
-    model = get_model_from_sd(greedy_soup_params, variant, config, device, args)
+    print('Thresholded Soup')
+    thresholded_soup_params, model = thresholded_soup(models, model_names, valid_loader, device, variant, config, args, threshold=0.3)
+    model = get_model_from_sd(thresholded_soup_params, variant, config, device, args)
     model.eval()
+    
+
+
     
 
     ## validation 

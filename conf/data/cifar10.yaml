@@ -1,9 +1,9 @@
 name: cifar10
 
-data_root: /home/youmin/workspace/VFMs-Adapters-Ensemble/cifar10
-batch_size: 32
+data_root: /ailab_mat/dataset/CIFAR100
+batch_size: 128
 num_workers: 4
-epoch: 250
+epoch: 370
 num_classes: 10
 save_path: ./checkpoints/checkpoints_cifar10
 
