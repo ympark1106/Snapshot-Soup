@@ -75,7 +75,7 @@ def train():
     data_path = config['data_root']
     # batch_size = int(config['batch_size'])
     batch_size = 32
-    num_workers = int(config['num_workers'])
+    # num_workers = int(config['num_workers'])
 
     if not os.path.exists(save_path):
         os.mkdir(save_path)

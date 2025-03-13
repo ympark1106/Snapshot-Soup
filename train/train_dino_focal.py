@@ -95,9 +95,9 @@ def train():
     model = torch.hub.load('facebookresearch/dinov2', model_load)
     dino_state_dict = model.state_dict()
 
-    model = rein.ReinsDinoVisionTransformer(
-        **variant
-    )
+    model = rein.DinoVisionTransformer(
+        **variant)
+        
     set_requires_grad(model, ["reins", "linear"])
     model.load_state_dict(dino_state_dict, strict=False)
     model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])

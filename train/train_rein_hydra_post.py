@@ -44,7 +44,7 @@ def train():
     save_path = os.path.join(config['save_path'], args.save_path)
     data_path = config['data_root']
     batch_size = int(config['batch_size'])
-    max_epoch = 300
+    max_epoch = 200
     num_workers = int(config['num_workers'])
     
     if not os.path.exists(save_path):
@@ -99,7 +99,7 @@ def train():
 
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay = 1e-5)
 
-    cycle_length = 30        
+    cycle_length = 20        
     print(f"Total cyclic epochs: {max_epoch}")
 
     checkpoint_path = os.path.join(save_path, f'last.pth.tar')  
@@ -110,9 +110,43 @@ def train():
     avg_accuracy = 0.0
     start_time = time.time()
 
-    for epoch in range(max_epoch):
+    # for epoch in range(max_epoch):
             
-        # 싸이클마다 70번째 에포크 상태로 되돌아감
+    #     # 싸이클마다 70번째 에포크 상태로 되돌아감
+    #     if epoch >= 0 and epoch % cycle_length == 0:
+    #         print(f"\nRestoring model to branching point")
+            
+    #         checkpoint = torch.load(checkpoint_path, map_location=device)
+
+    #         # DataParallel 모델에서 저장된 경우, 키에서 "module." 제거
+    #         new_state_dict = {}
+    #         for k, v in checkpoint.items():
+    #             new_key = k.replace("module.", "") if k.startswith("module.") else k
+    #             new_state_dict[new_key] = v
+
+    #         model.load_state_dict(new_state_dict, strict=False)  # strict=False 설정
+
+    #         cyclic_scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+    #             optimizer, T_0=cycle_length, T_mult=1, eta_min=1e-5
+    #         )
+
+    for epoch in range(max_epoch):
+        if epoch % cycle_length == 0:
+            # 각 cycle의 random seed를 변경하여 데이터 배치를 다르게 섞음
+            seed = epoch // cycle_length
+            print(f"\nSetting random seed to {seed}")
+            train_loader, _ = cifar100.get_train_valid_loader(
+                data_dir=data_path,
+                augment=True,
+                batch_size=batch_size,
+                valid_size=0.1,
+                random_seed=seed,  # seed 변경
+                shuffle=True,
+                num_workers=4,
+                pin_memory=True
+            )
+            
+            #     # 싸이클마다 70번째 에포크 상태로 되돌아감
         if epoch >= 0 and epoch % cycle_length == 0:
             print(f"\nRestoring model to branching point")
             

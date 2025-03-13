@@ -136,7 +136,7 @@ def greedy_soup_ece(models, model_names, valid_loader, device, variant, config, 
     greedy_soup_ingredients = [sorted_models[0][0]]
     
     TOLERANCE = (sorted_models[-1][1] - sorted_models[0][1]) / 2
-    TOLERANCE = 0
+    TOLERANCE = 1
 
     print(f'Tolerance: {TOLERANCE}')
 
@@ -272,8 +272,11 @@ def train():
     checkpoint = args.checkpoint
     # num_workers = int(config['num_workers'])
     # save_paths = [ 
-        # os.path.join(config['save_path'], checkpoint, 'cyclic_checkpoint_epoch219.pth'),
-        # os.path.join(config['save_path'], checkpoint, 'cyclic_checkpoint_epoch249.pth'),
+    #     os.path.join(config['save_path'], checkpoint, 'cyclic_checkpoint_epoch29.pth'),
+    #     os.path.join(config['save_path'], checkpoint, 'cyclic_checkpoint_epoch59.pth'),
+    #     os.path.join(config['save_path'], checkpoint, 'cyclic_checkpoint_epoch89.pth'),
+    #     os.path.join(config['save_path'], checkpoint, 'cyclic_checkpoint_epoch119.pth'),
+    #     os.path.join(config['save_path'], checkpoint, 'cyclic_checkpoint_epoch149.pth'),
     # ]
     
     
