@@ -1,5 +1,7 @@
 import os
 import pandas as pd
+import random
+import torch
 from torchvision import transforms
 from torch.utils.data import Dataset, DataLoader
 from PIL import Image
@@ -56,7 +58,12 @@ class APTOS2019_Dataset(Dataset):
         return image, label
 
 # DataLoader function
-def get_dataloaders(data_dir, batch_size=32, num_workers=4, pin_memory=False, val_split=0.2):
+def get_dataloaders(data_dir, batch_size=32, num_workers=4, pin_memory=False, val_split=0.2, random_seed=42):
+    # Set random seed for reproducibility
+    random.seed(random_seed)
+    torch.manual_seed(random_seed)
+    torch.cuda.manual_seed_all(random_seed)
+    
     # Image transformations
     train_transform = transforms.Compose([
         transforms.Resize((224, 224)),
@@ -92,7 +99,7 @@ def get_dataloaders(data_dir, batch_size=32, num_workers=4, pin_memory=False, va
     
     # Load EyePACS data and split into train/val
     eyepacs_data = pd.read_csv(train_csv)
-    train_data, val_data = train_test_split(eyepacs_data, test_size=val_split, random_state=42, stratify=eyepacs_data.iloc[:, 1])
+    train_data, val_data = train_test_split(eyepacs_data, test_size=val_split, random_state=random_seed, stratify=eyepacs_data.iloc[:, 1])
     
     # Datasets
     train_dataset = EyePACS_Dataset(data=train_data, root_dir=train_dir, transform=train_transform)
