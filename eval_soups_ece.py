@@ -159,7 +159,7 @@ def train():
     device = torch.device(f'cuda:{args.gpu}' if torch.cuda.is_available() else 'cpu')
     data_path = config['data_root']
     batch_size = int(config['batch_size'])
-    num_workers = int(config['num_workers'])
+    # num_workers = int(config['num_workers'])
  
     save_paths = [
         os.path.join(config['save_path'], 'reins_focal_1'),
@@ -172,12 +172,7 @@ def train():
         os.path.join(config['save_path'], 'reins_focal_8'),
         os.path.join(config['save_path'], 'reins_focal_9'),
         os.path.join(config['save_path'], 'reins_focal_10'),
-        
-        # os.path.join(config['save_path'], 'lora_focal_1'),
-        # os.path.join(config['save_path'], 'lora_focal_2'),
-        # os.path.join(config['save_path'], 'lora_focal_3'),
-        # os.path.join(config['save_path'], 'lora_focal_4'),
-        # os.path.join(config['save_path'], 'lora_focal_5'),
+
     ]
     
     model_names = [os.path.basename(path) for path in save_paths]

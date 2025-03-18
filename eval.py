@@ -94,7 +94,7 @@ def train():
     # elif args.data == 'retinamnist':
     #     train_loader, test_loader, valid_loader = retinamnist.get_dataloader(batch_size, download=True, num_workers=4)
     elif args.data == 'eyepacs':
-        train_loader, valid_loader, test_loader = eyepacs.get_dataloaders(data_path, batch_size=batch_size, pin_memory=True,num_workers=num_workers)
+        train_loader, valid_loader, test_loader = eyepacs.get_dataloaders(data_path, batch_size=batch_size, pin_memory=True,num_workers=16)
         
     if args.netsize == 's':
         model_load = dino_variant._small_dino
@@ -131,7 +131,7 @@ def train():
 
 
     state_dict = torch.load(os.path.join(save_path, 'last.pth.tar'), map_location=device)['state_dict']
-    # state_dict = torch.load(os.path.join(save_path, 'cyclic_checkpoint_epoch219.pth'), map_location=device)
+    # state_dict = torch.load(os.path.join(save_path, 'cyclic_checkpoint_epoch339.pth'), map_location=device)
     # state_dict = torch.load(os.path.join(save_path, 'checkpoint_epoch_70.pth'), map_location='cpu')
     model.load_state_dict(state_dict, strict=True)
     

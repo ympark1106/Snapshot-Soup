@@ -44,7 +44,7 @@ def train():
     save_path = os.path.join(config['save_path'], args.save_path)
     data_path = config['data_root']
     batch_size = int(config['batch_size'])
-    max_epoch = 200
+    max_epoch = 100
     num_workers = int(config['num_workers'])
     
     if not os.path.exists(save_path):
@@ -99,7 +99,7 @@ def train():
 
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay = 1e-5)
 
-    cycle_length = 20        
+    cycle_length = 10        
     print(f"Total cyclic epochs: {max_epoch}")
 
     checkpoint_path = os.path.join(save_path, f'last.pth.tar')  
@@ -137,16 +137,16 @@ def train():
             print(f"\nSetting random seed to {seed}")
             
             
-            # train_loader, _ = cifar100.get_train_valid_loader(
-            #     data_dir=data_path,
-            #     augment=True,
-            #     batch_size=batch_size,
-            #     valid_size=0.1,
-            #     random_seed=seed,  # seed 변경
-            #     shuffle=True,
-            #     num_workers=4,
-            #     pin_memory=True
-            # )
+            train_loader, _ = cifar10.get_train_valid_loader(
+                data_dir=data_path,
+                augment=True,
+                batch_size=batch_size,
+                valid_size=0.1,
+                random_seed=seed,  # seed 변경
+                shuffle=True,
+                num_workers=4,
+                pin_memory=True
+            )
             
             # train_loader, valid_loader, test_loader = ham10000.get_dataloaders(
                 # data_path, 
@@ -155,12 +155,12 @@ def train():
                 # random_seed=seed
                 # )
             
-            train_loader, valid_loader, test_loader = eyepacs.get_dataloaders(
-                data_path, 
-                batch_size=batch_size, 
-                num_workers=16, 
-                random_seed=seed
-                )
+            # train_loader, valid_loader, test_loader = eyepacs.get_dataloaders(
+            #     data_path, 
+            #     batch_size=batch_size, 
+            #     num_workers=16, 
+            #     random_seed=seed
+            #     )
             
             #     # 싸이클마다 70번째 에포크 상태로 되돌아감
         if epoch >= 0 and epoch % cycle_length == 0:

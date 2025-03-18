@@ -221,7 +221,7 @@ def train():
     device = torch.device(f'cuda:{args.gpu}' if torch.cuda.is_available() else 'cpu')
     data_path = config['data_root']
     batch_size = int(config['batch_size'])
-    num_workers = int(config['num_workers'])   
+    # num_workers = int(config['num_workers'])   
     
     save_paths = [
         os.path.join(config['save_path'], 'reins_focal_1'),

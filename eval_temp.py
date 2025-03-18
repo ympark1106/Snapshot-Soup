@@ -2,9 +2,6 @@ import warnings
 warnings.filterwarnings("ignore", message="xFormers is not available")
 
 import os
-os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-os.environ["TORCH_USE_CUDA_DSA"] = '1'
 
 import torch
 import torch.nn as nn
@@ -20,7 +17,7 @@ import random
 import rein
 import torch.nn.functional as F
 import dino_variant
-from data import cifar10, cifar100, cub, ham10000, bloodmnist, pathmnist, retinamnist
+from data import cifar10, cifar100, cub, ham10000, eyepacs
 
 
 def rein_forward(model, inputs, temp=1.0, post_temp=False):
@@ -62,22 +59,22 @@ def train():
 
 
     if args.data == 'cifar10':
-        test_loader = cifar10.get_test_loader(batch_size, shuffle=True, num_workers=4, pin_memory=True, get_val_temp=0, data_dir=data_path)
+        test_loader = cifar10.get_test_loader(batch_size, shuffle=True, num_workers=4, pin_memory=True, data_dir=data_path)
+        train_loader, valid_loader = cifar10.get_train_valid_loader(batch_size, augment=True, random_seed=42, valid_size=0.1, shuffle=True, num_workers=4, pin_memory=True, get_val_temp=0, data_dir=data_path)
     elif args.data == 'cifar100':
-        _, valid_loader = cifar100.get_train_valid_loader(data_dir=data_path, augment=True, batch_size=32, valid_size=0.1, random_seed=42, shuffle=True, num_workers=4, pin_memory=True)
-        test_loader = cifar100.get_test_loader(data_dir=data_path, batch_size=32, shuffle=True, num_workers=4, pin_memory=True)
-    elif args.data == 'cub':
-        test_loader = cub.get_test_loader(data_path, batch_size=32, scale_size=256, crop_size=224, num_workers=4, pin_memory=True)
+        test_loader = cifar100.get_test_loader(data_dir=data_path, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True)
+        train_loader, valid_loader = cifar100.get_train_valid_loader(data_dir=data_path, augment=True, batch_size=batch_size, valid_size=0.1, random_seed=42, shuffle=True, num_workers=4, pin_memory=True)
     elif args.data == 'ham10000':
-        train_loader, valid_loader, test_loader = ham10000.get_dataloaders(data_path, batch_size=32, num_workers=4)
-    elif args.data == 'bloodmnist':
-        train_loader, test_loader, valid_loader = bloodmnist.get_dataloader(batch_size, download=True, num_workers=4)
-    elif args.data == 'pathmnist':
-        train_loader, test_loader, valid_loader = pathmnist.get_dataloader(batch_size, download=True, num_workers=4)
-    elif args.data == 'retinamnist':
-        _, valid_loader, test_loader = retinamnist.get_dataloader(batch_size=32, download=True, num_workers=4)
-    else:
-        raise ValueError(f"Unsupported data type: {args.data}")
+        train_loader, valid_loader, test_loader = ham10000.get_dataloaders(data_path, batch_size=batch_size, num_workers=4)
+    # elif args.data == 'bloodmnist':
+    #     train_loader, test_loader, valid_loader = bloodmnist.get_dataloader(batch_size, download=True, num_workers=4)
+    # elif args.data == 'pathmnist':
+    #     train_loader, test_loader, valid_loader = pathmnist.get_dataloader(batch_size, download=True, num_workers=4)
+    # elif args.data == 'retinamnist':
+    #     train_loader, test_loader, valid_loader = retinamnist.get_dataloader(batch_size, download=True, num_workers=4)
+    elif args.data == 'eyepacs':
+        train_loader, valid_loader, test_loader = eyepacs.get_dataloaders(data_path, batch_size=batch_size, pin_memory=True,num_workers=16)
+        
         
         
     if args.netsize == 's':

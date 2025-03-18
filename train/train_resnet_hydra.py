@@ -74,8 +74,8 @@ def train():
     
     print("Max epoch: ", max_epoch)
     
-    criterion = focal_loss.FocalLoss(gamma=3) 
-    # criterion = torch.nn.CrossEntropyLoss()
+    # criterion = focal_loss.FocalLoss(gamma=3) 
+    criterion = torch.nn.CrossEntropyLoss()
     print("Criterion: ", criterion)
     model.eval()
 

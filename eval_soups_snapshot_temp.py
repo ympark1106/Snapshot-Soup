@@ -2,6 +2,7 @@ import warnings
 warnings.filterwarnings("ignore", message="xFormers is not available")
 
 import os
+import glob
 import torch
 import torch.nn as nn
 import argparse
@@ -10,7 +11,7 @@ from torch.cuda.amp.autocast_mode import autocast
 from utils import read_conf, validation_accuracy, validate, evaluate, calculate_ece, calculate_nll, validation_accuracy_lora
 from utils.temperature_scaling import ModelWithTemperature
 import dino_variant
-from data import cifar10, cifar100, cub, ham10000, bloodmnist, pathmnist, retinamnist
+from data import dataloader
 import rein
 import torch.nn.functional as F
 
@@ -91,30 +92,7 @@ def get_model_from_sd(state_dict, variant, config, device, args):
     model.to(device)
     
     return model
-            
-# Data loader setup
-def setup_data_loaders(args, data_path, batch_size):
-    if args.data == 'cifar10':
-        test_loader = cifar10.get_test_loader(batch_size, shuffle=True, num_workers=4, pin_memory=True, get_val_temp=0, data_dir=data_path)
-        valid_loader = None
-    elif args.data == 'cifar100':
-        test_loader = cifar100.get_test_loader(data_dir=data_path, batch_size=32, shuffle=True, num_workers=4, pin_memory=True)
-        _, valid_loader = cifar100.get_train_valid_loader(data_dir=data_path, augment=True, batch_size=32, valid_size=0.1, random_seed=42, shuffle=True, num_workers=4, pin_memory=True)
-    elif args.data == 'cub':
-        test_loader = cub.get_test_loader(data_path, batch_size=32, scale_size=256, crop_size=224, num_workers=4, pin_memory=True)
-        _, valid_loader = cub.get_train_val_loader(data_path, batch_size=32, scale_size=256, crop_size=224, num_workers=4, pin_memory=True)
-    elif args.data == 'ham10000':
-        _, valid_loader, test_loader = ham10000.get_dataloaders(data_path, batch_size=32, num_workers=4)
-    elif args.data == 'bloodmnist':
-        _, valid_loader, test_loader = bloodmnist.get_dataloader(batch_size=32, download=True, num_workers=4)
-    elif args.data == 'pathmnist':
-        _, valid_loader, test_loader = pathmnist.get_dataloader(batch_size=32, download=True, num_workers=4)
-    elif args.data == 'retinamnist':
-        _, valid_loader, test_loader = retinamnist.get_dataloader(batch_size=32, download=True, num_workers=4)
-    else:
-        raise ValueError(f"Unsupported data type: {args.data}")
-    
-    return test_loader, valid_loader
+        
 
 
 
@@ -197,33 +175,18 @@ def train():
     parser.add_argument('--gpu', '-g', default='0', type=str)
     parser.add_argument('--netsize', default='s', type=str)
     parser.add_argument('--type', '-t', default='rein', type=str)
+    parser.add_argument('--checkpoint', '-c', type=str, default='reins_hydra_10')
     args = parser.parse_args()
 
     config = read_conf(os.path.join('conf', 'data', f'{args.data}.yaml'))
     device = torch.device(f'cuda:{args.gpu}' if torch.cuda.is_available() else 'cpu')
     data_path = config['data_root']
     batch_size = int(config['batch_size'])
+    checkpoint = args.checkpoint
     
-    save_paths = [
-
-        os.path.join(config['save_path'], 'reins_focal_hydra/cyclic_checkpoint_epoch99.pth'),
-        os.path.join(config['save_path'], 'reins_focal_hydra/cyclic_checkpoint_epoch129.pth'),
-        os.path.join(config['save_path'], 'reins_focal_hydra/cyclic_checkpoint_epoch159.pth'),
-        os.path.join(config['save_path'], 'reins_focal_hydra/cyclic_checkpoint_epoch189.pth'),
-        os.path.join(config['save_path'], 'reins_focal_hydra/cyclic_checkpoint_epoch219.pth'),
-        
-        # os.path.join(config['save_path'], 'reins_focal_hydra_1/cyclic_checkpoint_epoch99.pth'),
-        # os.path.join(config['save_path'], 'reins_focal_hydra_1/cyclic_checkpoint_epoch129.pth'),
-        # os.path.join(config['save_path'], 'reins_focal_hydra_1/cyclic_checkpoint_epoch159.pth'),
-        # os.path.join(config['save_path'], 'reins_focal_hydra_1/cyclic_checkpoint_epoch189.pth'),
-        # os.path.join(config['save_path'], 'reins_focal_hydra_1/cyclic_checkpoint_epoch219.pth'),
     
-        # os.path.join(config['save_path'], 'reins_focal_hydra_1/cyclic_checkpoint_epoch89.pth'),
-        # os.path.join(config['save_path'], 'reins_focal_hydra_1/cyclic_checkpoint_epoch129.pth'),
-        # os.path.join(config['save_path'], 'reins_focal_hydra_1/cyclic_checkpoint_epoch169.pth'),
-        # os.path.join(config['save_path'], 'reins_focal_hydra_1/cyclic_checkpoint_epoch209.pth'),
-        # os.path.join(config['save_path'], 'reins_focal_hydra_1/cyclic_checkpoint_epoch249.pth'),
-    ]
+    checkpoint_dir = os.path.join(config['save_path'], checkpoint)
+    save_paths = sorted(glob.glob(os.path.join(checkpoint_dir, "cyclic_checkpoint_epoch*.pth")))
     
     model_names = [os.path.basename(path) for path in save_paths]
 
@@ -240,7 +203,7 @@ def train():
 
     
     # models = initialize_models(save_paths, variant, config, device, args)
-    test_loader, valid_loader = setup_data_loaders(args, data_path, batch_size)
+    train_loader, valid_loader, test_loader = dataloader.setup_data_loaders(args, data_path, batch_size)
     
     greedy_soup_params, model = greedy_soup_ensemble(models, model_names, valid_loader, device, variant, config, args)
 

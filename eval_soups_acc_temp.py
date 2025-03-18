@@ -93,76 +93,69 @@ def get_model_from_sd(state_dict, variant, config, device, args):
     return model
 
 
-
 # Greedy soup model ensembling
 def greedy_soup_ensemble(models, model_names, valid_loader, device, variant, config, args):
-    # Calculate ECE for each model and sort them by ECE in ascending order (lower ECE is better)
-    ece_list = [validate(model, valid_loader, device, args) for model in models]
-    print("ECE for each model:")
-    print(ece_list)
-    model_ece_pairs = [(model, ece, name) for model, ece, name in zip(models, ece_list, model_names)]
-    sorted_models = sorted(model_ece_pairs, key=lambda x: x[1])
+    # Evaluate and sort models by validation accuracy
+    if args.type == 'rein':
+        model_accuracies = [(model, validation_accuracy(model, valid_loader, device), name) for model, name in zip(models, model_names)]
+    elif args.type == 'lora':
+        model_accuracies = [(model, validation_accuracy_lora(model, valid_loader, device), name) for model, name in zip(models, model_names)]
     
-    print("Sorted models with ECE performance:")
-    for model, ece, name in sorted_models:
-        print(f'Model: {name}, ECE: {ece}')
-
-    best_ece = sorted_models[0][1]
-    greedy_soup_params = sorted_models[0][0].state_dict()
-    greedy_soup_ingredients = [sorted_models[0][0]]
+    # Sort models based on accuracy
+    sorted_models = sorted(model_accuracies, key=lambda x: x[1], reverse=True)
     
-    TOLERANCE = (sorted_models[-1][1] - sorted_models[0][1]) / 2
-    TOLERANCE = 1
-    print(f'Tolerance: {TOLERANCE}')
+    # Print sorted models with their names and accuracies
+    print("Sorted models by accuracy:")
+    for model, acc, name in sorted_models:
+        print(f'Model: {name}, Accuracy: {acc}')
+    print("\n")
+    
+    # Initialize greedy soup with the highest-performing model
+    max_accuracy = sorted_models[0][1]
+    greedy_soup_params = sorted_models[0][0].state_dict()  # Best model's initial parameters
+    greedy_soup_ingredients = [sorted_models[0][0]] 
 
-    for i in range(1, len(models)):
+    for i in range(1, len(sorted_models)):
+        print(f'Testing model {i+1} ({sorted_models[i][2]}) of {len(sorted_models)}')
+        
+        # previous_greedy_soup_params = {k: v.clone() for k, v in greedy_soup_params.items()}
+        
+        # New model parameters to test as an additional ingredient
         new_ingredient_params = sorted_models[i][0].state_dict()
         num_ingredients = len(greedy_soup_ingredients)
-        print(f'Adding ingredient {i+1} ({sorted_models[i][2]}) to the greedy soup. Num ingredients: {num_ingredients}')
-        
-        # Calculate potential new parameters with the new ingredient
+        print(f'Adding ingredient {i+1} ({sorted_models[i][2]}) to the greedy soup. Num ingredients: {num_ingredients}')    
+    
+        # Create potential new soup parameters by averaging with the new ingredient
         potential_greedy_soup_params = {
-            k: greedy_soup_params[k].clone() * (num_ingredients / (num_ingredients + 1)) + 
+            k: greedy_soup_params[k].clone() * (num_ingredients / (num_ingredients + 1)) +
                new_ingredient_params[k].clone() * (1. / (num_ingredients + 1))
             for k in new_ingredient_params
         }
-
+        
+        # Load the new potential parameters into the base model for evaluation
         temp_model = get_model_from_sd(potential_greedy_soup_params, variant, config, device, args)
         temp_model.eval()
         
-        # Evaluate the potential greedy soup model
-        outputs, targets = [], []
-        with torch.no_grad():
-            for inputs, target in valid_loader:
-                inputs, target = inputs.to(device), target.to(device)
-                if args.type == 'rein':
-                    output = rein_forward(temp_model, inputs)
-                    # print(output.shape)  
-                elif args.type == 'lora':
-                    with autocast(enabled=True):
-                        output = lora_forward(temp_model, inputs)
+        # Calculate validation accuracy with the potential new soup parameters
+        if args.type == 'rein':
+            held_out_val_accuracy = validation_accuracy(temp_model, valid_loader, device, mode='rein')
+        elif args.type == 'lora':
+            held_out_val_accuracy = validation_accuracy_lora(temp_model, valid_loader, device)
         
-                outputs.append(output.cpu())
-                targets.append(target.cpu())
-        outputs = torch.cat(outputs).numpy()
-        targets = torch.cat(targets).numpy().astype(int)
-        held_out_val_ece = calculate_ece(outputs, targets)
+        print(f'Held-out validation accuracy: {held_out_val_accuracy}, best accuracy so far: {max_accuracy}.\n')
         
-        print(f'Potential greedy soup ECE: {held_out_val_ece}, best ECE so far: {best_ece}.')
-        
-        # Add new ingredient to the greedy soup if it improves ECE or is within tolerance
-        if held_out_val_ece < best_ece + TOLERANCE:
-            best_ece = held_out_val_ece
+        # Update greedy soup if accuracy improves, otherwise revert to original parameters
+        if held_out_val_accuracy > max_accuracy:
             greedy_soup_ingredients.append(sorted_models[i][0])
-            greedy_soup_params = potential_greedy_soup_params
-            print(f'<Added new ingredient to soup. Total ingredients: {len(greedy_soup_ingredients)}>\n')
+            max_accuracy = held_out_val_accuracy
+            greedy_soup_params = potential_greedy_soup_params  # Save the improved parameters
+            print(f'[New greedy soup ingredient added. Number of ingredients: {len(greedy_soup_ingredients)}]\n')
         else:
-            print(f'<No improvement. Reverting to best-known parameters.>\n')
+            print(f'[No improvement. Reverting to best-known parameters.]\n')
+
+    return greedy_soup_params, sorted_models[0][0]
 
 
-    final_model = get_model_from_sd(greedy_soup_params, variant, config, device, args)
-        
-    return greedy_soup_params, final_model
 def train():
     parser = argparse.ArgumentParser()
     parser.add_argument('--data', '-d', type=str, default='cub')

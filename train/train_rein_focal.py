@@ -116,12 +116,12 @@ def train():
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay = 1e-5)
     # optimizer = torch.optim.Adam(model.parameters(), lr=1e-4, weight_decay = 1e-6)
 
-    # scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, lr_decay)
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, lr_decay)
     
-    cycle_length = 25
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
-                optimizer, T_0=cycle_length, T_mult=1, eta_min=1e-5
-            )
+    # cycle_length = 25
+    # scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+    #             optimizer, T_0=cycle_length, T_mult=1, eta_min=1e-5
+    #         )
     saver = timm.utils.CheckpointSaver(model, optimizer, checkpoint_dir= save_path, max_history = 1) 
 
     # f = open(os.path.join(save_path, 'epoch_acc.txt'), 'w')
