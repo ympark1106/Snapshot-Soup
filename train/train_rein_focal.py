@@ -19,7 +19,7 @@ import rein
 
 import dino_variant
 from sklearn.metrics import f1_score
-from data import cifar10, cifar100, cub, ham10000, bloodmnist, pathmnist, retinamnist, eyepacs
+from data import cifar10, cifar100, cub, ham10000, bloodmnist, pathmnist, retinamnist, eyepacs, tinyimagenet
 from losses import RankMixup_MNDCG, RankMixup_MRL, focal_loss, focal_loss_adaptive_gamma
 
 def count_trainable_params(model):
@@ -49,7 +49,7 @@ def train():
     save_path = os.path.join(config['save_path'], args.save_path)
     data_path = config['data_root']
     # batch_size = int(config['batch_size'])
-    batch_size = 32
+    # batch_size = 32
     # max_epoch = int(config['epoch'])
     max_epoch = 100
     # num_workers = int(config['num_workers'])
@@ -62,7 +62,7 @@ def train():
 
 
     if args.data == 'cifar10':
-        train_loader, valid_loader = cifar10.get_train_valid_loader(batch_size, augment=True, random_seed=42, valid_size=0.1, shuffle=True, num_workers=4, pin_memory=True, get_val_temp=0, data_dir=data_path)
+        train_loader, valid_loader = cifar10.get_train_valid_loader(batch_size=32, augment=True, random_seed=42, valid_size=0.1, shuffle=True, num_workers=4, pin_memory=True, get_val_temp=0, data_dir=data_path)
     elif args.data == 'cifar100':
         train_loader, valid_loader = cifar100.get_train_valid_loader(data_dir=data_path, augment=True, batch_size=32, valid_size=0.1, random_seed=42, shuffle=True, num_workers=4, pin_memory=True)
     elif args.data == 'cub':
@@ -76,7 +76,9 @@ def train():
     elif args.data == 'retinamnist':    
         train_loader, valid_loader, _ = retinamnist.get_dataloader(batch_size=32, download=True, num_workers=4)
     elif args.data == 'eyepacs':
-        train_loader, valid_loader, _ = eyepacs.get_dataloaders(data_path, batch_size=batch_size, pin_memory=True, num_workers=num_workers)
+        train_loader, valid_loader, _ = eyepacs.get_dataloaders(data_path, batch_size=128, pin_memory=True, num_workers=16)
+    elif args.data == 'tinyimagenet':
+        train_loader, valid_loader, _ = tinyimagenet.get_dataloaders(data_path, batch_size=128, random_seed=42, num_workers=4, pin_memory=True, val_split=0.1)
     
         
     if args.netsize == 's':

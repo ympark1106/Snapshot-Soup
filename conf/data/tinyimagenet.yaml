@@ -1,0 +1,7 @@
+name: tinyimagenet
+
+data_root: /ailab_mat2/dataset/tiny-imagenet-200/
+batch_size: 128
+epoch: 370
+num_classes: 200
+save_path: ./checkpoints/checkpoints_tinyimagenet
