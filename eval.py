@@ -17,7 +17,7 @@ import random
 import rein
 
 import dino_variant
-from data import cifar10, cifar100, cub, ham10000, bloodmnist, pathmnist, retinamnist, eyepacs
+from data import cifar10, cifar100, cub, ham10000, bloodmnist, pathmnist, retinamnist, eyepacs, tinyimagenet
 
 
 def rein_forward(model, inputs):
@@ -73,8 +73,8 @@ def train():
     device = 'cuda:'+args.gpu
     save_path = os.path.join(config['save_path'], args.save_path)
     data_path = config['data_root']
-    # batch_size = int(config['batch_size'])
-    batch_size = 32
+    batch_size = int(config['batch_size'])
+    # batch_size = 32
     # num_workers = int(config['num_workers'])
 
     if not os.path.exists(save_path):
@@ -95,6 +95,8 @@ def train():
     #     train_loader, test_loader, valid_loader = retinamnist.get_dataloader(batch_size, download=True, num_workers=4)
     elif args.data == 'eyepacs':
         train_loader, valid_loader, test_loader = eyepacs.get_dataloaders(data_path, batch_size=batch_size, pin_memory=True,num_workers=16)
+    elif args.data == 'tinyimagenet':
+        train_loader, valid_loader, test_loader = tinyimagenet.get_dataloaders(data_path, batch_size=128, random_seed=42, num_workers=4, pin_memory=True, val_split=0.1)
         
     if args.netsize == 's':
         model_load = dino_variant._small_dino

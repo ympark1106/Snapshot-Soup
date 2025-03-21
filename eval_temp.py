@@ -94,7 +94,8 @@ def train():
     model.load_state_dict(dino_state_dict, strict=False)
     model.to(device)
 
-    state_dict = torch.load(os.path.join(save_path, 'last.pth.tar'), map_location='cpu')['state_dict']
+    # state_dict = torch.load(os.path.join(save_path, 'last.pth.tar'), map_location='cpu')['state_dict']
+    state_dict = torch.load(os.path.join(save_path, 'cyclic_checkpoint_epoch369.pth'), map_location=device)
     # state_dict = torch.load(os.path.join(save_path, 'model_best.pth.tar'), map_location='cpu')['state_dict']
     model.load_state_dict(state_dict, strict=True)
             

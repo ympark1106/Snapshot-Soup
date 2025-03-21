@@ -1,4 +1,4 @@
-from data import cifar10, cifar100, ham10000, eyepacs
+from data import cifar10, cifar100, ham10000, eyepacs, tinyimagenet
 
 
 # Data loader setup
@@ -19,7 +19,10 @@ def setup_data_loaders(args, data_path, batch_size):
     #     _, valid_loader, test_loader = retinamnist.get_dataloader(batch_size=32, download=True, num_workers=4)
     elif args.data == 'eyepacs':
         train_loader, valid_loader, test_loader = eyepacs.get_dataloaders(data_path, batch_size=batch_size, pin_memory=True, num_workers=16)
-    else:
+    elif args.data == 'tinyimagenet':
+        train_loader, valid_loader, test_loader = tinyimagenet.get_dataloaders(data_path, batch_size=128, random_seed=42, num_workers=4, pin_memory=True, val_split=0.1)
+        
+    else: 
         raise ValueError(f"Unsupported data type: {args.data}")
     
     return train_loader, valid_loader, test_loader
