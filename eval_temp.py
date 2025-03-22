@@ -17,7 +17,7 @@ import random
 import rein
 import torch.nn.functional as F
 import dino_variant
-from data import cifar10, cifar100, cub, ham10000, eyepacs
+from data import cifar10, cifar100, cub, ham10000, eyepacs, tinyimagenet
 
 
 def rein_forward(model, inputs, temp=1.0, post_temp=False):
@@ -74,7 +74,8 @@ def train():
     #     train_loader, test_loader, valid_loader = retinamnist.get_dataloader(batch_size, download=True, num_workers=4)
     elif args.data == 'eyepacs':
         train_loader, valid_loader, test_loader = eyepacs.get_dataloaders(data_path, batch_size=batch_size, pin_memory=True,num_workers=16)
-        
+    elif args.data == 'tinyimagenet':
+        train_loader, valid_loader, test_loader = tinyimagenet.get_dataloaders(data_path, batch_size=128, num_workers=4, pin_memory=True, val_split=0.1)
         
         
     if args.netsize == 's':
@@ -95,9 +96,13 @@ def train():
     model.to(device)
 
     # state_dict = torch.load(os.path.join(save_path, 'last.pth.tar'), map_location='cpu')['state_dict']
-    state_dict = torch.load(os.path.join(save_path, 'cyclic_checkpoint_epoch369.pth'), map_location=device)
-    # state_dict = torch.load(os.path.join(save_path, 'model_best.pth.tar'), map_location='cpu')['state_dict']
-    model.load_state_dict(state_dict, strict=True)
+    # state_dict = torch.load(os.path.join(save_path, 'cyclic_checkpoint_epoch369.pth'), map_location=device)
+
+    # state_dict = torch.load(os.path.join(save_path, f'Uniform_Soup_{args.data}.pth'), map_location=device)
+    state_dict = torch.load(os.path.join(save_path, f'Greedy_Soup_ACC_{args.data}.pth'), map_location=device)
+    # state_dict = torch.load(os.path.join(save_path, f'Greedy_Soup_ECE_{args.data}.pth'), map_location=device)
+    
+    model.load_state_dict(state_dict, strict=False)
             
     model_temp = ModelWithTemperature(model)
     # print(model_temp)

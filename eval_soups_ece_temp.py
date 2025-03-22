@@ -111,9 +111,13 @@ def greedy_soup_ensemble(models, model_names, valid_loader, device, variant, con
     greedy_soup_params = sorted_models[0][0].state_dict()
     greedy_soup_ingredients = [sorted_models[0][0]]
     
-    TOLERANCE = (sorted_models[-1][1] - sorted_models[0][1]) / 2
-    TOLERANCE = 1
-    print(f'Tolerance: {TOLERANCE}')
+    if args.soup == 'greedy':
+        TOLERANCE = 0
+    elif args.soup == 'uniform':
+        TOLERANCE = 1
+    else:
+        print(f"⚠️ Unknown soup type '{args.soup}'. Defaulting TOLERANCE to 0.")
+        TOLERANCE = 0
 
     for i in range(1, len(models)):
         new_ingredient_params = sorted_models[i][0].state_dict()
@@ -169,6 +173,7 @@ def train():
     parser.add_argument('--gpu', '-g', default='0', type=str)
     parser.add_argument('--netsize', default='s', type=str)
     parser.add_argument('--type', '-t', default='rein', type=str)
+    parser.add_argument('--soup', '-s', default='greedy', type=str)
     args = parser.parse_args()
 
     config = read_conf(os.path.join('conf', 'data', f'{args.data}.yaml'))

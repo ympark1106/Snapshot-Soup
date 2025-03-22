@@ -287,6 +287,12 @@ def train():
     outputs = torch.cat(outputs).numpy()
     targets = torch.cat(targets).numpy().astype(int)
     evaluate(outputs, targets, verbose=True)
+    
+    save_filename = f'Greedy_Soup_ACC_{args.data}.pth'
+    save_path = os.path.join(config['save_path'], save_filename)
+    torch.save({'state_dict': model.state_dict()}, save_path)
+    print(f"\n✅ Final greedy soup model saved at: {save_path}")
+
         # Failure Prediction Metrics 계산
     # aurc = compute_aurc(outputs, targets)
     # auroc = compute_auroc(outputs, targets)

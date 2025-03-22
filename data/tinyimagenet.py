@@ -1,7 +1,7 @@
 import torch
 import torchvision.transforms as transforms
-from torch.utils.data import DataLoader, Dataset, random_split, SubsetRandomSampler, Subset
-import os, glob, random, numpy as np
+from torch.utils.data import DataLoader, Dataset, Subset
+import os, glob, random, numpy as np, time
 from torchvision.io import read_image, ImageReadMode
 
 class TinyImageNetDataset(Dataset):
@@ -48,10 +48,9 @@ class ValTinyImageNetDataset(Dataset):
             image = self.transform(image.type(torch.FloatTensor))
         return image, label
 
-def get_dataloaders(data_root, batch_size=128, num_workers=8, pin_memory=True, val_split=0.1, random_seed=42):
-    random.seed(random_seed)
-    np.random.seed(random_seed)
-    torch.manual_seed(random_seed)
+def get_dataloaders(data_root, batch_size=128, num_workers=8, pin_memory=True, val_split=0.1):
+    # Train/val 분할은 항상 고정(seed=42)
+    np.random.seed(42)
 
     id_dict = {}
     with open(os.path.join(data_root, 'wnids.txt'), 'r') as f:
@@ -85,8 +84,8 @@ def get_dataloaders(data_root, batch_size=128, num_workers=8, pin_memory=True, v
 
     train_idx, valid_idx = indices[split:], indices[:split]
 
-    train_sampler = SubsetRandomSampler(train_idx)
-    val_sampler = torch.utils.data.SequentialSampler(valid_idx)
+    train_dataset = Subset(full_train_dataset, train_idx)
+    val_dataset = Subset(full_train_dataset, valid_idx)
 
     test_dataset = ValTinyImageNetDataset(
         os.path.join(data_root, 'val'),
@@ -94,14 +93,22 @@ def get_dataloaders(data_root, batch_size=128, num_workers=8, pin_memory=True, v
         transform=valid_transform
     )
 
+    # 매번 다른 랜덤 시드를 설정하여 학습 randomness를 추가
+    random_seed = int(time.time())
+    random.seed(random_seed)
+    torch.manual_seed(random_seed)
+    torch.cuda.manual_seed_all(random_seed)
+
     train_loader = DataLoader(
-        full_train_dataset, batch_size=batch_size, sampler=train_sampler,
+        train_dataset, batch_size=batch_size, shuffle=True,
         num_workers=num_workers, pin_memory=pin_memory
     )
+
     val_loader = DataLoader(
-        full_train_dataset, batch_size=batch_size, sampler=val_sampler,
+        val_dataset, batch_size=batch_size, shuffle=False,
         num_workers=num_workers, pin_memory=pin_memory
     )
+
     test_loader = DataLoader(
         test_dataset, batch_size=batch_size, shuffle=False,
         num_workers=num_workers, pin_memory=pin_memory

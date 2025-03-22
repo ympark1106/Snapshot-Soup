@@ -93,8 +93,15 @@ def greedy_soup_ensemble(models, model_names, valid_loader, device, variant, con
     greedy_soup_params = sorted_models[0][0].state_dict()
     greedy_soup_ingredients = [sorted_models[0][0]]
     
-    TOLERANCE = (sorted_models[-1][1] - sorted_models[0][1]) / 2
-    TOLERANCE = 1
+
+    if args.soup == 'greedy':
+        TOLERANCE = 0
+    elif args.soup == 'uniform':
+        TOLERANCE = 1
+    else:
+        print(f"⚠️ Unknown soup type '{args.soup}'. Defaulting TOLERANCE to 0.")
+        TOLERANCE = 0
+        
     print(f'Tolerance: {TOLERANCE}')
 
     for i in range(1, len(models)):
@@ -153,6 +160,7 @@ def train():
     parser.add_argument('--gpu', '-g', default='0', type=str)
     parser.add_argument('--netsize', default='s', type=str)
     parser.add_argument('--type', '-t', default='rein', type=str)
+    parser.add_argument('--soup', '-s', default='greedy', type=str)
     args = parser.parse_args()
 
     config = read_conf(os.path.join('conf', 'data', f'{args.data}.yaml'))
@@ -228,6 +236,16 @@ def train():
     outputs = torch.cat(outputs).numpy()
     targets = torch.cat(targets).numpy().astype(int)
     evaluate(outputs, targets, verbose=True)
+    
+    
+    if args.soup == 'greedy':
+        save_filename = f'Greedy_Soup_ECE_{args.data}.pth'
+    elif args.soup == 'uniform':
+        save_filename = f'Uniform_Soup_{args.data}.pth'
+        
+    save_path = os.path.join(config['save_path'], save_filename)
+    torch.save({'state_dict': model.state_dict()}, save_path)
+    print(f"\n✅ Final greedy soup model saved at: {save_path}")
         # Failure Prediction Metrics 계산
     # aurc = compute_aurc(outputs, targets)
     # auroc = compute_auroc(outputs, targets)
