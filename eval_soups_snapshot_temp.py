@@ -8,8 +8,9 @@ import torch.nn as nn
 import argparse
 import numpy as np
 from torch.cuda.amp.autocast_mode import autocast
-from utils import read_conf, validation_accuracy, validate, evaluate, calculate_ece, calculate_nll, validation_accuracy_lora
+from utils import read_conf, validation_accuracy, validate, evaluate, calculate_ece, calculate_nll, validation_accuracy_lora, reliability_diagram
 from utils.temperature_scaling import ModelWithTemperature
+from utils.bin_temperature_scaling import ModelWithBinwiseTemperature
 import dino_variant
 from data import dataloader
 import rein
@@ -210,10 +211,12 @@ def train():
     model = get_model_from_sd(greedy_soup_params, variant, config, device, args)
     
     model_temp = ModelWithTemperature(model)
-    # print(model_temp)
     model_temp.set_temperature(valid_loader, cross_validate='ece')
     temp = model_temp.get_temperature()
     print(f"Optimal Temperature: {temp}")
+
+    # model_temp = ModelWithBinwiseTemperature(model, n_bins=10, device='cuda:5')
+    # model_temp.set_temperature(valid_loader)
     
     
     ## validation 
@@ -229,6 +232,7 @@ def train():
             inputs, target = inputs.to(device), target.to(device)
             if args.type == 'rein':
                 output = temp_forward(model_temp, inputs, temp=temp, post_temp=True)
+                # output = rein_forward(model_temp, inputs)
                 output = torch.softmax(output, dim=1)
                 # print(output.shape)  
             elif args.type == 'lora':
@@ -245,6 +249,8 @@ def train():
     outputs = torch.cat(outputs).numpy()
     targets = torch.cat(targets).numpy().astype(int)
     evaluate(outputs, targets, verbose=True)
+    
+    reliability_diagram(outputs, targets, save_path='reliability_ece_branch_ts.png', title="ECE based")
 
 if __name__ == '__main__':
     train()

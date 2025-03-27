@@ -121,6 +121,9 @@ def train():
         if epoch >= cyclic_start_epoch and (epoch - cyclic_start_epoch) % cycle_length == 0:
             print(f"\nRestoring model to checkpoint from epoch {cyclic_start_epoch}")
             
+            for param_group in optimizer.param_groups:
+                param_group['lr'] = 1e-3
+            
             checkpoint = torch.load(checkpoint_path, map_location=device)
 
             # DataParallel 모델에서 저장된 경우, 키에서 "module." 제거
@@ -177,6 +180,8 @@ def train():
             if optimizer.param_groups[0]['lr'] <= 0.00002:
                             torch.save(model.state_dict(), os.path.join(save_path, f'cyclic_checkpoint_epoch{epoch}.pth'))
             cyclic_scheduler.step()
+       
+          
             
         train_avg_loss = total_loss/len(train_loader)
         epoch_duration = time.time() - epoch_start_time

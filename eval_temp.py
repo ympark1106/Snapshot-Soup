@@ -9,7 +9,7 @@ import torch.nn as nn
 import argparse
 import timm
 import numpy as np
-from utils import read_conf, validation_accuracy, evaluate, validate, calculate_ece, calculate_nll
+from utils import read_conf, validation_accuracy, evaluate, validate, calculate_ece, calculate_nll, ece, sce, ace, tace, reliability_diagram
 
 from utils.temperature_scaling import ModelWithTemperature
 
@@ -95,11 +95,11 @@ def train():
     model.load_state_dict(dino_state_dict, strict=False)
     model.to(device)
 
-    # state_dict = torch.load(os.path.join(save_path, 'last.pth.tar'), map_location='cpu')['state_dict']
+    state_dict = torch.load(os.path.join(save_path, 'last.pth.tar'), map_location='cpu')['state_dict']
     # state_dict = torch.load(os.path.join(save_path, 'cyclic_checkpoint_epoch369.pth'), map_location=device)
 
     # state_dict = torch.load(os.path.join(save_path, f'Uniform_Soup_{args.data}.pth'), map_location=device)
-    state_dict = torch.load(os.path.join(save_path, f'Greedy_Soup_ACC_{args.data}.pth'), map_location=device)
+    # state_dict = torch.load(os.path.join(save_path, f'Greedy_Soup_ACC_{args.data}.pth'), map_location=device)
     # state_dict = torch.load(os.path.join(save_path, f'Greedy_Soup_ECE_{args.data}.pth'), map_location=device)
     
     model.load_state_dict(state_dict, strict=False)
@@ -131,6 +131,18 @@ def train():
     targets = targets.astype(int)
     evaluate(outputs, targets, verbose=True)
 
+    ece_val = ece(targets, outputs, num_bins=15)
+    sce_val = sce(targets, outputs, num_bins=15)
+    ace_val = ace(targets, outputs, num_bins=15)
+    tace_val = tace(targets, outputs, num_bins=15, threshold=0.01)
+    
+    print("\n🔹 Calibration Metrics (GCE 기반) 🔹")
+    print(f"ECE  (Expected Calibration Error):           {ece_val * 100:.2f}%")
+    print(f"SCE  (Static Calibration Error):             {sce_val * 100:.2f}%")
+    print(f"ACE  (Adaptive Calibration Error):           {ace_val * 100:.2f}%")
+    print(f"TACE (Thresholded Adaptive Calibration):     {tace_val * 100:.2f}%")
+
+    reliability_diagram(outputs, targets, num_bins=15, title="ECE based", save_path="reliability_ece.png")
     
 
 

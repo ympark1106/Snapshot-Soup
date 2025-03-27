@@ -2,6 +2,6 @@ name: ham10000
 
 data_root: /SSDe/youmin_park/dataset/ham10000
 batch_size: 32
-epoch: 550
+epoch: 370
 num_classes: 7
 save_path: ./checkpoints/checkpoints_ham10000

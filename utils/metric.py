@@ -3,6 +3,7 @@ import numpy as np
 from sklearn.metrics import roc_auc_score, f1_score, cohen_kappa_score, balanced_accuracy_score
 import torch.nn.functional as F
 from utils.temperature_scaling import ModelWithTemperature
+from utils.bin_temperature_scaling import ModelWithBinwiseTemperature
 
 
 def validation_accuracy_lora(model, loader, device):

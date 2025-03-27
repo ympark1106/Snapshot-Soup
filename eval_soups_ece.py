@@ -9,7 +9,7 @@ import torch.nn as nn
 import argparse
 import numpy as np
 from torch.cuda.amp.autocast_mode import autocast
-from utils import read_conf, validation_accuracy, ModelWithTemperature, validate, evaluate, calculate_ece, calculate_nll, validation_accuracy_lora, compute_aurc, compute_auroc, compute_fpr95
+from utils import read_conf, validation_accuracy, ModelWithTemperature, validate, evaluate, calculate_ece, calculate_nll, validation_accuracy_lora, compute_aurc, compute_auroc, compute_fpr95, ece, sce, ace, tace
 import dino_variant
 from data import dataloader
 import rein
@@ -237,15 +237,26 @@ def train():
     targets = torch.cat(targets).numpy().astype(int)
     evaluate(outputs, targets, verbose=True)
     
+    ece_val = ece(targets, outputs, num_bins=15)
+    sce_val = sce(targets, outputs, num_bins=15)
+    ace_val = ace(targets, outputs, num_bins=15)
+    tace_val = tace(targets, outputs, num_bins=15, threshold=0.01)
     
-    if args.soup == 'greedy':
-        save_filename = f'Greedy_Soup_ECE_{args.data}.pth'
-    elif args.soup == 'uniform':
-        save_filename = f'Uniform_Soup_{args.data}.pth'
+    print("\n🔹 Calibration Metrics (GCE 기반) 🔹")
+    print(f"ECE  (Expected Calibration Error):           {ece_val * 100:.2f}%")
+    print(f"SCE  (Static Calibration Error):             {sce_val * 100:.2f}%")
+    print(f"ACE  (Adaptive Calibration Error):           {ace_val * 100:.2f}%")
+    print(f"TACE (Thresholded Adaptive Calibration):     {tace_val * 100:.2f}%")
+    
+    # if args.soup == 'greedy':
+    #     save_filename = f'Greedy_Soup_ECE_{args.data}.pth'
+    # elif args.soup == 'uniform':
+    #     save_filename = f'Uniform_Soup_{args.data}.pth'
         
-    save_path = os.path.join(config['save_path'], save_filename)
-    torch.save({'state_dict': model.state_dict()}, save_path)
-    print(f"\n✅ Final greedy soup model saved at: {save_path}")
+    # save_path = os.path.join(config['save_path'], save_filename)
+    # torch.save({'state_dict': model.state_dict()}, save_path)
+    # print(f"\n✅ Final greedy soup model saved at: {save_path}")
+    
         # Failure Prediction Metrics 계산
     # aurc = compute_aurc(outputs, targets)
     # auroc = compute_auroc(outputs, targets)
