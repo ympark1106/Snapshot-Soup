@@ -24,6 +24,12 @@ def resnet_forward(model, inputs):
     output = torch.softmax(output, dim=1)
     return output
 
+def adaptformer_forward(model, inputs):
+    f = model.forward_features(inputs)
+    outputs = model.linear(f)
+    outputs = torch.softmax(outputs, dim=1) 
+    return outputs
+
 
 def validate(model, valid_loader, device, args):
     """
@@ -52,7 +58,9 @@ def validate(model, valid_loader, device, args):
             elif args.type == 'lora':
                 with autocast(enabled=True):
                     output = lora_forward(model, inputs)
-            if args.type == 'resnet':
+            elif args.type == 'adaptformer':
+                output = adaptformer_forward(model, inputs)
+            elif args.type == 'resnet':
                 output = resnet_forward(model, inputs)
 
             

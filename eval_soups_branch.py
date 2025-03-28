@@ -6,6 +6,8 @@ import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6,7"
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+
 import argparse
 import numpy as np
 import glob
@@ -14,7 +16,8 @@ from utils import read_conf, validation_accuracy, ModelWithTemperature, validate
 import dino_variant
 from data import dataloader
 import rein
-from losses import DECE
+import adaptformer
+
 
 # Model forward function
 def rein_forward(model, inputs):
@@ -30,43 +33,24 @@ def lora_forward(model, inputs):
         output = torch.softmax(output, dim=1)
     return output
 
-# def initialize_model(variant, config, device, args):
-#     model_load = dino_variant._small_dino
-#     dino = torch.hub.load('facebookresearch/dinov2', model_load)
-#     dino_state_dict = dino.state_dict()
+def adaptformer_forward(model, inputs):
+    f = model.forward_features(inputs)
+    outputs = model.linear(f)
+    outputs = torch.softmax(outputs, dim=1) 
+    return outputs
 
-#     if args.type == 'rein':
-#         model = rein.ReinsDinoVisionTransformer(
-#             **variant
-#         )
-#         model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
-#         model.load_state_dict(dino_state_dict, strict=True) # 수정
-#         model.to(device)
-
-#     elif args.type == 'lora':
-#         new_state_dict = dict()
-#         for k in dino_state_dict.keys():
-#             new_k = k.replace("attn.qkv", "attn.qkv.qkv")
-#             new_state_dict[new_k] = dino_state_dict[k]
-#         model = rein.LoRADinoVisionTransformer(dino)
-#         model.dino.load_state_dict(new_state_dict, strict=True)
-#         model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
-#         model.to(device)
-        
-#     return model
-
+  
 
 def initialize_model(variant, config, device, args):
     model_load = dino_variant._small_dino
     dino = torch.hub.load('facebookresearch/dinov2', model_load)
     dino_state_dict = dino.state_dict()
 
-    # ReinsDinoVisionTransformer 모델 생성
     if args.type == 'rein':
         model = rein.ReinsDinoVisionTransformer(**variant)
         model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
+        
     elif args.type == 'lora':
-        # LoRA 계열 모델은 attn.qkv를 attn.qkv.qkv로 rename
         new_state_dict = {}
         for k, v in dino_state_dict.items():
             new_k = k.replace("attn.qkv", "attn.qkv.qkv")
@@ -75,25 +59,60 @@ def initialize_model(variant, config, device, args):
 
         model = rein.LoRADinoVisionTransformer(dino)
         model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
+        
+        
+    tuning_config = argparse.Namespace()
+    if args.type == 'adaptformer':
+        # Adaptformer
+        tuning_config.ffn_adapt = True
+        tuning_config.ffn_num = 64
+        tuning_config.ffn_option="parallel"
+        tuning_config.ffn_adapter_layernorm_option="none"
+        tuning_config.ffn_adapter_init_option="lora"
+        tuning_config.ffn_adapter_scalar="0.1"
+        tuning_config.d_model=384 # base -> 768
+        # VPT
+        tuning_config.vpt_on = False
+        tuning_config.vpt_num = 1
 
-    # --------------------------------------------------------------------
-    # (A) 모델 전체 state_dict 불러옴 (아직은 랜덤 초기화 파라미터 포함)
-    model_dict = model.state_dict()
+        tuning_config.fulltune = False 
+        
+        new_state_dict = dict()
+        for k in dino_state_dict.keys():
+            new_k = k.replace("mlp.", "")
+            new_state_dict[new_k] = dino_state_dict[k]
+        extra_tokens = dino_state_dict['pos_embed'][:, :1]
+        src_weight = dino_state_dict['pos_embed'][:, 1:]
+        src_weight = src_weight.reshape(1, 37, 37, 384).permute(0, 3, 1, 2)
+        dst_weight = F.interpolate(
+            src_weight.float(), size=16, align_corners=False, mode='bilinear') # base model -> 16
+        dst_weight = torch.flatten(dst_weight, 2).transpose(1, 2)
+        dst_weight = dst_weight.to(src_weight.dtype)
+        new_state_dict['pos_embed'] = torch.cat((extra_tokens, dst_weight), dim=1)
+        model = adaptformer.VisionTransformer(patch_size=14, embed_dim= 384, tuning_config = tuning_config, use_dinov2=True)
+        model.load_state_dict(new_state_dict, strict=False) 
 
-    # (B) DINO state_dict 중 현재 모델 키/shape와 일치하는 항목만 filtering
-    filtered_dict = {}
-    for k, v in dino_state_dict.items():
-        if k in model_dict and model_dict[k].shape == v.shape:
-            filtered_dict[k] = v
+        model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
+        # model.to(device)  
 
-    # (C) 모델 dict에 DINO 파라미터를 덮어씌움
-    model_dict.update(filtered_dict)
+    # # --------------------------------------------------------------------
+    # # (A) 모델 전체 state_dict 불러옴 (아직은 랜덤 초기화 파라미터 포함)
+    # model_dict = model.state_dict()
 
-    # (D) strict=True로 최종 로딩 (filtered_dict 외 키는 그대로)
-    model.load_state_dict(model_dict, strict=True)
-    # --------------------------------------------------------------------
+    # # (B) DINO state_dict 중 현재 모델 키/shape와 일치하는 항목만 filtering
+    # filtered_dict = {}
+    # for k, v in dino_state_dict.items():
+    #     if k in model_dict and model_dict[k].shape == v.shape:
+    #         filtered_dict[k] = v
 
+    # # (C) 모델 dict에 DINO 파라미터를 덮어씌움
+    # model_dict.update(filtered_dict)
+
+    # # (D) strict=True로 최종 로딩 (filtered_dict 외 키는 그대로)
+    # model.load_state_dict(model_dict, strict=True)
+    # # --------------------------------------------------------------------
     model.to(device)
+    
     return model
 
 
@@ -113,10 +132,34 @@ def get_model_from_sd(state_dict, variant, config, device, args):
         model = rein.LoRADinoVisionTransformer(dino)
         model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
         model.load_state_dict(state_dict, strict=True)
+        
+    
+    elif args.type == 'adaptformer':
+        # model_load = dino_variant._small_dino
+        # dino = torch.hub.load('facebookresearch/dinov2', model_load)
+        # dino_state_dict = dino.state_dict()
+        
+        tuning_config = argparse.Namespace()
+        # Adaptformer
+        tuning_config.ffn_adapt = True
+        tuning_config.ffn_num = 64
+        tuning_config.ffn_option="parallel"
+        tuning_config.ffn_adapter_layernorm_option="none"
+        tuning_config.ffn_adapter_init_option="lora"
+        tuning_config.ffn_adapter_scalar="0.1"
+        tuning_config.d_model=384 # base -> 768
+        # VPT
+        tuning_config.vpt_on = False
+        tuning_config.vpt_num = 1
+
+        tuning_config.fulltune = False 
+        
+        model = adaptformer.VisionTransformer(patch_size=14, embed_dim= 384, tuning_config = tuning_config, use_dinov2=True)
+        model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
+        model.load_state_dict(state_dict, strict=False) 
     model.to(device)
     
     return model
-
 
 # Greedy soup model ensembling
 def greedy_soup_ece(models, model_names, valid_loader, device, variant, config, args):
@@ -165,6 +208,8 @@ def greedy_soup_ece(models, model_names, valid_loader, device, variant, config, 
                 elif args.type == 'lora':
                     with autocast(enabled=True):
                         output = lora_forward(temp_model, inputs)
+                elif args.type == 'adaptformer':
+                    output = adaptformer_forward(temp_model, inputs)
         
                 outputs.append(output.cpu())
                 targets.append(target.cpu())
@@ -191,10 +236,11 @@ def greedy_soup_ece(models, model_names, valid_loader, device, variant, config, 
 
 def greedy_soup_acc(models, model_names, valid_loader, device, variant, config, args):
     # Evaluate and sort models by validation accuracy
-    if args.type == 'rein':
-        model_accuracies = [(model, validation_accuracy(model, valid_loader, device), name) for model, name in zip(models, model_names)]
+    if args.type == 'rein' or args.type == 'adaptformer':
+        model_accuracies = [(model, validation_accuracy(model, valid_loader, device, mode=args.type), name) for model, name in zip(models, model_names)]
     elif args.type == 'lora':
         model_accuracies = [(model, validation_accuracy_lora(model, valid_loader, device), name) for model, name in zip(models, model_names)]
+
     
     # Sort models based on accuracy
     sorted_models = sorted(model_accuracies, key=lambda x: x[1], reverse=True)
@@ -232,10 +278,11 @@ def greedy_soup_acc(models, model_names, valid_loader, device, variant, config, 
         temp_model.eval()
         
         # Calculate validation accuracy with the potential new soup parameters
-        if args.type == 'rein':
-            held_out_val_accuracy = validation_accuracy(temp_model, valid_loader, device, mode='rein')
+        if args.type == 'rein' or args.type == 'adaptformer':
+            held_out_val_accuracy = validation_accuracy(temp_model, valid_loader, device, mode=args.type)
         elif args.type == 'lora':
             held_out_val_accuracy = validation_accuracy_lora(temp_model, valid_loader, device)
+
         
         print(f'Held-out validation accuracy: {held_out_val_accuracy}, best accuracy so far: {max_accuracy}.\n')
         
@@ -261,7 +308,7 @@ def train():
     parser.add_argument('--netsize', default='s', type=str)
     parser.add_argument('--type', '-t', default='rein', type=str)
     parser.add_argument('--checkpoint', '-c', type=str, default='reins_hydra_10')
-    parser.add_argument('--soup', '-s', type=str, default='acc')
+    parser.add_argument('--soup', '-s', type=str, default='ece')
     args = parser.parse_args()
 
     config = read_conf(os.path.join('conf', 'data', f'{args.data}.yaml'))
@@ -270,17 +317,16 @@ def train():
     batch_size = int(config['batch_size'])
     checkpoint = args.checkpoint
     # num_workers = int(config['num_workers'])
-    # save_paths = [ 
-    #     os.path.join(config['save_path'], checkpoint, 'cyclic_checkpoint_epoch29.pth'),
-    #     os.path.join(config['save_path'], checkpoint, 'cyclic_checkpoint_epoch59.pth'),
-    #     os.path.join(config['save_path'], checkpoint, 'cyclic_checkpoint_epoch89.pth'),
-    #     os.path.join(config['save_path'], checkpoint, 'cyclic_checkpoint_epoch119.pth'),
-    #     os.path.join(config['save_path'], checkpoint, 'cyclic_checkpoint_epoch149.pth'),
-    # ]
-    
-    
+   
     checkpoint_dir = os.path.join(config['save_path'], checkpoint)
     save_paths = sorted(glob.glob(os.path.join(checkpoint_dir, "cyclic_checkpoint_epoch*.pth")))
+    # save_paths = [ 
+    #     # os.path.join(config['save_path'], checkpoint, 'cyclic_checkpoint_epoch29.pth'),
+    #     # os.path.join(config['save_path'], checkpoint, 'cyclic_checkpoint_epoch59.pth'),
+    #     # os.path.join(config['save_path'], checkpoint, 'cyclic_checkpoint_epoch89.pth'),
+    #     os.path.join(config['save_path'], checkpoint, 'cyclic_checkpoint_epoch159.pth'),
+    #     os.path.join(config['save_path'], checkpoint, 'cyclic_checkpoint_epoch189.pth'),
+    # ]
 
     # print(save_paths) 
     print(f'Found {len(save_paths)} models to soup.')
@@ -294,12 +340,21 @@ def train():
 
     
     for save_path in save_paths:
-        model = initialize_model(variant, config, device, args)
-        state_dict = torch.load(save_path, map_location='cpu')
-        model.load_state_dict(state_dict, strict=True) # 수정
-        model.to(device)
-        model.eval()
-        models.append(model)
+        if args.type == 'adaptformer':
+            model = initialize_model(variant, config, device, args)
+            state_dict= torch.load(save_path, map_location='cpu')
+            model.load_state_dict(state_dict, strict=False)
+            model.to(device)
+            model.eval()
+            models.append(model)
+            
+        else:
+            model = initialize_model(variant, config, device, args)
+            state_dict = torch.load(save_path, map_location='cpu')
+            model.load_state_dict(state_dict, strict=True) # 수정
+            model.to(device)
+            model.eval()
+            models.append(model)
 
     
     # models = initialize_models(save_paths, variant, config, device, args)
@@ -340,11 +395,11 @@ def train():
                     output = model.linear(features)
                     output = torch.softmax(output, dim=1)
                     # print(output.shape)
-                
-                
+            elif args.type == 'adaptformer':
+                output = adaptformer_forward(model, inputs)
+
             outputs.append(output.cpu())
             targets.append(target.cpu())
-    
     outputs = torch.cat(outputs).numpy()
     targets = torch.cat(targets).numpy().astype(int)
     evaluate(outputs, targets, verbose=True)
@@ -362,7 +417,7 @@ def train():
     print(f"TACE (Thresholded Adaptive Calibration):     {tace_val * 100:.2f}%")
     
     
-    reliability_diagram(outputs, targets, num_bins=15, title="ECE based", save_path="reliability_ece_branch.png")
+    # reliability_diagram(outputs, targets, num_bins=15, title="ECE based", save_path="reliability_ece_branch.png")
 
     # reliability_diagram(probs=outputs, labels=targets, num_bins=15, threshold=0.0, title="ACE based (All probs)")
 

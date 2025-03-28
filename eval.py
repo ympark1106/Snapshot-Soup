@@ -38,6 +38,7 @@ def lora_forward(model, inputs):
 def adaptformer_forward(model, inputs):
     f = model.forward_features(inputs)
     outputs = model.linear(f)
+    outputs = torch.softmax(outputs, dim=1) 
     return outputs
 
 def resnet_forward(model, inputs):
@@ -158,8 +159,8 @@ def train():
 
 
 
-    state_dict = torch.load(os.path.join(save_path, 'last.pth.tar'), map_location=device)['state_dict']
-    # state_dict = torch.load(os.path.join(save_path, 'cyclic_checkpoint_epoch339.pth'), map_location=device)
+    # state_dict = torch.load(os.path.join(save_path, 'last.pth.tar'), map_location=device)['state_dict']
+    state_dict = torch.load(os.path.join(save_path, 'cyclic_checkpoint_epoch99.pth'), map_location=device)
     # state_dict = torch.load(os.path.join(save_path, 'checkpoint_epoch_70.pth'), map_location='cpu')
     
     # state_dict = torch.load(os.path.join(save_path, f'Uniform_Soup_{args.data}.pth'), map_location=device)
@@ -191,9 +192,6 @@ def train():
             inputs, target = inputs.to(device), target.to(device)
             if args.type == 'rein':
                 output = rein_forward(model, inputs)
-                # print(output.shape)  
-            elif args.type == 'rein_dropout':
-                output = rein_forward_mc_dropout(model, inputs, num_samples=10)
                 # print(output.shape)
             elif args.type == 'resnet':
                 output = resnet_forward(model, inputs)
