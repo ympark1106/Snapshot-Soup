@@ -1,7 +1,7 @@
 name: cifar100
 
 data_root: /ailab_mat/dataset/CIFAR100
-batch_size: 32
+batch_size: 128
 num_workers: 4
 save_path: ./checkpoints/checkpoints_cifar100
 epoch: 370

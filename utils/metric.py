@@ -51,6 +51,11 @@ def validation_accuracy(model, loader, device, mode='rein'):
             outputs = model.linear(f)  # Linear 레이어 적용
         
         return outputs
+    
+    def adaptformer(model, inputs):
+        f = model.forward_features(inputs)
+        outputs = model.linear(f)
+        return outputs
 
     
     def rein3(model, inputs):
@@ -103,6 +108,8 @@ def validation_accuracy(model, loader, device, mode='rein'):
         out = rein
     elif mode == 'no_rein':
         out = no_rein
+    elif mode == 'adaptformer':
+        out = adaptformer
     elif mode == 'rein3':
         out = rein3
     elif mode == 'rein_dropout':

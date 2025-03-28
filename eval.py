@@ -6,6 +6,7 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6,7"
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 import argparse
 import timm
@@ -15,6 +16,7 @@ from torch.cuda.amp.autocast_mode import autocast
 
 import random
 import rein
+import adaptformer
 
 import dino_variant
 from data import cifar10, cifar100, cub, ham10000, bloodmnist, pathmnist, retinamnist, eyepacs, tinyimagenet
@@ -33,24 +35,10 @@ def lora_forward(model, inputs):
         output = torch.softmax(output, dim=1)
     return output
 
-
-def rein_forward_mc_dropout(model, inputs, num_samples=10):
-    outputs = []
-    model.train()  # MC Dropout
-
-    for i in range(num_samples):
-        with torch.no_grad():
-            output = model.forward_features(inputs)[:, 0, :]
-            output = model.linear(output)
-            output = torch.softmax(output, dim=1)
-            outputs.append(output)
-            # print(f"Sample {i+1} output mean: {output.mean().item()}")
-    # print(torch.stack(outputs).shape)
-
-    output = torch.mean(torch.stack(outputs), dim=0)
-    # print(f"MC Dropout 평균화 후 output shape: {output.shape}")
-    return output
-
+def adaptformer_forward(model, inputs):
+    f = model.forward_features(inputs)
+    outputs = model.linear(f)
+    return outputs
 
 def resnet_forward(model, inputs):
     output = model(inputs)
@@ -98,6 +86,23 @@ def train():
     elif args.data == 'tinyimagenet':
         train_loader, valid_loader, test_loader = tinyimagenet.get_dataloaders(data_path, batch_size=128, num_workers=4, pin_memory=True, val_split=0.1)
         
+    tuning_config = argparse.Namespace()
+    if args.type == 'adaptformer':
+        # Adaptformer
+        tuning_config.ffn_adapt = True
+        tuning_config.ffn_num = 64
+        tuning_config.ffn_option="parallel"
+        tuning_config.ffn_adapter_layernorm_option="none"
+        tuning_config.ffn_adapter_init_option="lora"
+        tuning_config.ffn_adapter_scalar="0.1"
+        tuning_config.d_model=384 # base -> 768
+        # VPT
+        tuning_config.vpt_on = False
+        tuning_config.vpt_num = 1
+
+        tuning_config.fulltune = False
+
+        
     if args.netsize == 's':
         model_load = dino_variant._small_dino
         variant = dino_variant._small_variant
@@ -130,6 +135,27 @@ def train():
         model.dino.load_state_dict(new_state_dict, strict=False)
         model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
         model.to(device)
+    elif args.type == 'adaptformer':
+        new_state_dict = dict()
+        for k in dino_state_dict.keys():
+            new_k = k.replace("mlp.", "")
+            new_state_dict[new_k] = dino_state_dict[k]
+        extra_tokens = dino_state_dict['pos_embed'][:, :1]
+        src_weight = dino_state_dict['pos_embed'][:, 1:]
+        src_weight = src_weight.reshape(1, 37, 37, 384).permute(0, 3, 1, 2)
+        # src_weight = src_weight.reshape(1, 37, 37, 768).permute(0, 3, 1, 2) ＃ for base model
+
+        dst_weight = F.interpolate(
+            src_weight.float(), size=16, align_corners=False, mode='bilinear') # base model -> 16
+        dst_weight = torch.flatten(dst_weight, 2).transpose(1, 2)
+        dst_weight = dst_weight.to(src_weight.dtype)
+        new_state_dict['pos_embed'] = torch.cat((extra_tokens, dst_weight), dim=1)
+        model = adaptformer.VisionTransformer(patch_size=14, embed_dim= 384, tuning_config = tuning_config, use_dinov2=True)
+        model.load_state_dict(new_state_dict, strict=False) 
+
+        model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
+        model.to(device)  
+
 
 
     state_dict = torch.load(os.path.join(save_path, 'last.pth.tar'), map_location=device)['state_dict']
@@ -175,6 +201,9 @@ def train():
                 with autocast(enabled=True):
                     output = lora_forward(model, inputs)
                     # print(output.shape)
+            elif args.type == 'adaptformer':
+                output = adaptformer_forward(model, inputs)
+                # print(output.shape)
                 
             outputs.append(output.cpu())
             targets.append(target.cpu())

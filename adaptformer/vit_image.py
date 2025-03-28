@@ -182,6 +182,7 @@ class VisionTransformer(nn.Module):
         return x
 
 
+
 def vit_base_patch16(**kwargs):
     model = VisionTransformer(
         patch_size=16, embed_dim=768, depth=12, num_heads=12, mlp_ratio=4, qkv_bias=True,
