@@ -9,7 +9,7 @@ import torch.nn as nn
 import argparse
 import numpy as np
 from torch.cuda.amp.autocast_mode import autocast
-from utils import read_conf, validation_accuracy, ModelWithTemperature, validate, evaluate, calculate_ece, calculate_nll, validation_accuracy_lora, compute_aurc, compute_auroc, compute_fpr95, ece, sce, ace, tace
+from util import read_conf, validation_accuracy, ModelWithTemperature, validate, evaluate, calculate_ece, calculate_nll, validation_accuracy_lora, compute_aurc, compute_auroc, compute_fpr95, ece, sce, ace, tace
 import dino_variant
 from data import dataloader
 import rein

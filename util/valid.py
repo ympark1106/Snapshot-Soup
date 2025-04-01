@@ -2,7 +2,7 @@
 
 import torch
 import numpy as np
-from utils import calculate_ece
+from util import calculate_ece
 from torch.cuda.amp.autocast_mode import autocast
 
 def rein_forward(model, inputs):

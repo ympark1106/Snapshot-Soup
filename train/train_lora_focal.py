@@ -16,7 +16,7 @@ import numpy as np
 from torch.cuda.amp.autocast_mode import autocast
 from torch.cuda.amp.grad_scaler import GradScaler
 
-from utils import read_conf, validation_accuracy, validation_accuracy_lora #, calculate_flops
+from util import read_conf, validation_accuracy, validation_accuracy_lora #, calculate_flops
 import random
 import rein
 

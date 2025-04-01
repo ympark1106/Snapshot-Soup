@@ -47,3 +47,35 @@ _large_variant = dict(
     ffn_bias=True
 )
 _large_dino = 'dinov2_vitl14'
+
+_clip_variant = dict(
+    patch_size=16,
+    embed_dim=768,
+    depth=12,
+    num_heads=12,
+    mlp_ratio=4,
+    img_size=224,
+    ffn_layer="mlp",
+    init_values=0,
+    block_chunks=0,
+    qkv_bias=True,
+    proj_bias=True,
+    ffn_bias=True,
+    out_indices = [7, 11, 14, 17]
+)
+
+_dinov1_variant = dict(
+    patch_size=16,
+    embed_dim=384,
+    depth=12,
+    num_heads=12,
+    mlp_ratio=4,
+    img_size=224,
+    ffn_layer="mlp",
+    init_values=0,
+    block_chunks=0,
+    qkv_bias=True,
+    proj_bias=True,
+    ffn_bias=True,
+    out_indices = [7, 11, 14, 17]
+)

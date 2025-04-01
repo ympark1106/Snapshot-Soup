@@ -11,7 +11,7 @@ import torch.nn.functional as F
 import argparse
 import timm
 import numpy as np
-from utils import read_conf, validation_accuracy, evaluate, validation_accuracy_lora, compute_aurc, compute_auroc, compute_fpr95, ece, sce, ace, tace, rmsce, reliability_diagram
+from util import read_conf, validation_accuracy, evaluate, validation_accuracy_lora, compute_aurc, compute_auroc, compute_fpr95, ece, sce, ace, tace, rmsce, reliability_diagram
 from torch.cuda.amp.autocast_mode import autocast
 
 import random
@@ -52,7 +52,7 @@ def train():
     parser = argparse.ArgumentParser()
     parser.add_argument('--data', '-d', type=str, default='cifar100')
     parser.add_argument('--gpu', '-g', default = '0', type=str)
-    parser.add_argument('--netsize', default='s', type=str)
+    parser.add_argument('--net', '-n', default='dinov2', type=str)
     parser.add_argument('--save_path', '-s', type=str)
     parser.add_argument('--type', '-t', default= 'rein', type=str)
     args = parser.parse_args()
@@ -104,29 +104,46 @@ def train():
         tuning_config.fulltune = False
 
         
-    if args.netsize == 's':
+
+    if args.net == 'dinov2':
         model_load = dino_variant._small_dino
         variant = dino_variant._small_variant
 
+        dino = torch.hub.load('facebookresearch/dinov2', model_load)
+        dino_state_dict = dino.state_dict()
 
-    dino = torch.hub.load('facebookresearch/dinov2', model_load)
-    dino_state_dict = dino.state_dict()
 
-    if args.type == 'rein':
+    elif args.net == 'dinov1':
+        model_ = torch.hub.load('facebookresearch/dino:main', 'dino_vits16')
+        variant = dino_variant._dinov1_variant
+        dino_state_dict = model_.state_dict()
+        # print(dino_state_dict.keys())
+        new_state_dict = dict()
+        for k in dino_state_dict.keys():
+            new_k = k.replace("mlp.", "")
+            new_state_dict[new_k] = dino_state_dict[k]
+
+
+    if args.type == 'linear':
+        model = torch.hub.load('facebookresearch/dinov2', model_load)
+        model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
+        model.load_state_dict(dino_state_dict, strict=False)
+        model.to(device)
+    elif args.type == 'rein':
         model = rein.ReinsDinoVisionTransformer(
             **variant
         )
         model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
         model.load_state_dict(dino_state_dict, strict=False)
         model.to(device)
-    elif args.type == 'rein_dropout':
-        model = rein.ReinsDinoVisionTransformer_Dropout(
-            **variant,
-            dropout_rate=0.5
-        )
-        model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
-        model.load_state_dict(dino_state_dict, strict=False)
-        model.to(device)
+    # elif args.type == 'rein_dropout':
+    #     model = rein.ReinsDinoVisionTransformer_Dropout(
+    #         **variant,
+    #         dropout_rate=0.5
+    #     )
+    #     model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
+    #     model.load_state_dict(dino_state_dict, strict=False)
+    #     model.to(device)
     elif args.type == 'lora':
         new_state_dict = dict()
         for k in dino_state_dict.keys():
@@ -136,31 +153,31 @@ def train():
         model.dino.load_state_dict(new_state_dict, strict=False)
         model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
         model.to(device)
-    elif args.type == 'adaptformer':
-        new_state_dict = dict()
-        for k in dino_state_dict.keys():
-            new_k = k.replace("mlp.", "")
-            new_state_dict[new_k] = dino_state_dict[k]
-        extra_tokens = dino_state_dict['pos_embed'][:, :1]
-        src_weight = dino_state_dict['pos_embed'][:, 1:]
-        src_weight = src_weight.reshape(1, 37, 37, 384).permute(0, 3, 1, 2)
-        # src_weight = src_weight.reshape(1, 37, 37, 768).permute(0, 3, 1, 2) ＃ for base model
+    # elif args.type == 'adaptformer':
+    #     new_state_dict = dict()
+    #     for k in dino_state_dict.keys():
+    #         new_k = k.replace("mlp.", "")
+    #         new_state_dict[new_k] = dino_state_dict[k]
+    #     extra_tokens = dino_state_dict['pos_embed'][:, :1]
+    #     src_weight = dino_state_dict['pos_embed'][:, 1:]
+    #     src_weight = src_weight.reshape(1, 37, 37, 384).permute(0, 3, 1, 2)
+    #     # src_weight = src_weight.reshape(1, 37, 37, 768).permute(0, 3, 1, 2) ＃ for base model
 
-        dst_weight = F.interpolate(
-            src_weight.float(), size=16, align_corners=False, mode='bilinear') # base model -> 16
-        dst_weight = torch.flatten(dst_weight, 2).transpose(1, 2)
-        dst_weight = dst_weight.to(src_weight.dtype)
-        new_state_dict['pos_embed'] = torch.cat((extra_tokens, dst_weight), dim=1)
-        model = adaptformer.VisionTransformer(patch_size=14, embed_dim= 384, tuning_config = tuning_config, use_dinov2=True)
-        model.load_state_dict(new_state_dict, strict=False) 
+    #     dst_weight = F.interpolate(
+    #         src_weight.float(), size=16, align_corners=False, mode='bilinear') # base model -> 16
+    #     dst_weight = torch.flatten(dst_weight, 2).transpose(1, 2)
+    #     dst_weight = dst_weight.to(src_weight.dtype)
+    #     new_state_dict['pos_embed'] = torch.cat((extra_tokens, dst_weight), dim=1)
+    #     model = adaptformer.VisionTransformer(patch_size=14, embed_dim= 384, tuning_config = tuning_config, use_dinov2=True)
+    #     model.load_state_dict(new_state_dict, strict=False) 
 
-        model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
-        model.to(device)  
+    #     model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
+    #     model.to(device)  
 
+    print(model)
 
-
-    # state_dict = torch.load(os.path.join(save_path, 'last.pth.tar'), map_location=device)['state_dict']
-    state_dict = torch.load(os.path.join(save_path, 'cyclic_checkpoint_epoch99.pth'), map_location=device)
+    state_dict = torch.load(os.path.join(save_path, 'last.pth.tar'), map_location=device)['state_dict']
+    # state_dict = torch.load(os.path.join(save_path, 'cyclic_checkpoint_epoch159.pth'), map_location=device)
     # state_dict = torch.load(os.path.join(save_path, 'checkpoint_epoch_70.pth'), map_location='cpu')
     
     # state_dict = torch.load(os.path.join(save_path, f'Uniform_Soup_{args.data}.pth'), map_location=device)
@@ -190,7 +207,11 @@ def train():
         for batch_idx, (inputs, target) in enumerate(test_loader):
             # print(f"Batch {batch_idx} targets:", target)
             inputs, target = inputs.to(device), target.to(device)
-            if args.type == 'rein':
+            if args.type == 'linear':
+                output = model(inputs)
+                output = model.linear(output)
+                output = torch.softmax(output, dim=1)
+            elif args.type == 'rein':
                 output = rein_forward(model, inputs)
                 # print(output.shape)
             elif args.type == 'resnet':
@@ -211,7 +232,7 @@ def train():
     evaluate(outputs, targets, verbose=True)
     
     
-    print("\n🔹 Calibration Metrics 🔹")
+    # print("\n🔹 Calibration Metrics 🔹")
 
     ece_val = ece(targets, outputs, num_bins=15)
     sce_val = sce(targets, outputs, num_bins=15)

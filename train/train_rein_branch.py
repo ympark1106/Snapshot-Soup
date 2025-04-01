@@ -13,7 +13,7 @@ import torch.nn as nn
 import argparse
 import timm
 import numpy as np
-from utils import read_conf, validation_accuracy
+from util import read_conf, validation_accuracy
 
 import random
 import rein
@@ -34,8 +34,8 @@ def train():
     parser = argparse.ArgumentParser()
     parser.add_argument('--data', '-d', type=str, default='cifar100')
     parser.add_argument('--gpu', '-g', default = '0', type=str)
-    parser.add_argument('--netsize', default='s', type=str)
     parser.add_argument('--save_path', '-s', type=str)
+    parser.add_argument('--net', '-n', default='dinov2', type=str)
     args = parser.parse_args()
     
     # os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
@@ -63,28 +63,46 @@ def train():
     elif args.data == 'tinyimagenet':
         train_loader, valid_loader, _ = tinyimagenet.get_dataloaders(data_path, batch_size=128, num_workers=4, pin_memory=True, val_split=0.1)
         
-    if args.netsize == 's':
+        
+    if args.net == 'dinov2':
         model_load = dino_variant._small_dino
         variant = dino_variant._small_variant
-    elif args.netsize == 'b':
-        model_load = dino_variant._base_dino
-        variant = dino_variant._base_variant
-    elif args.netsize == 'l':
-        model_load = dino_variant._large_dino
-        variant = dino_variant._large_variant
-    
-    model = torch.hub.load('facebookresearch/dinov2', model_load)
-    dino_state_dict = model.state_dict()
 
-    model = rein.ReinsDinoVisionTransformer(
-        **variant
-    )
-    set_requires_grad(model, ["reins", "linear"])
-    model.load_state_dict(dino_state_dict, strict=False)
-    model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
-    model.to(device)
+        model = torch.hub.load('facebookresearch/dinov2', model_load)
+        dino_state_dict = model.state_dict()
+
+
+        model = rein.ReinsDinoVisionTransformer(
+            **variant
+        )
+        new_state_dict = dino_state_dict
+
+        set_requires_grad(model, ["reins", "linear"])
+        model.dino.load_state_dict(new_state_dict, strict=False)
+        model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
+        model.to(device)  
+
+    elif args.net == 'dinov1':
+        model_ = torch.hub.load('facebookresearch/dino:main', 'dino_vits16')
+        variant = dino_variant._dinov1_variant
+        dino_state_dict = model_.state_dict()
+        # print(dino_state_dict.keys())
+        new_state_dict = dict()
+        for k in dino_state_dict.keys():
+            new_k = k.replace("mlp.", "")
+            new_state_dict[new_k] = dino_state_dict[k]
+
+        model = rein.ReinsDinoVisionTransformer(
+            **variant
+        )
+
+        set_requires_grad(model, ["reins", "linear"])
+        model.load_state_dict(new_state_dict, strict=False)
+        model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
+        model.to(device)  
     
     print(model)
+    
     
     print("Max epoch: ", max_epoch)
     
