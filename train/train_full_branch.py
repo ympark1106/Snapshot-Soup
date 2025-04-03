@@ -47,7 +47,8 @@ def train():
     save_path = os.path.join(config['save_path'], args.save_path)
     data_path = config['data_root']
     batch_size = int(config['batch_size'])
-    max_epoch = int(config['epoch'])
+    # max_epoch = int(config['epoch'])
+    max_epoch = 740
     # num_workers = int(config['num_workers'])
     
     if not os.path.exists(save_path):
@@ -110,15 +111,13 @@ def train():
     
     saver = timm.utils.CheckpointSaver(model, optimizer, checkpoint_dir= save_path, max_history = 1) 
 
-    if not os.path.exists(checkpoint_path):
-        print(f"Saving checkpoint for epoch {cyclic_start_epoch}")
-        torch.save(model.state_dict(), checkpoint_path)
-
     avg_accuracy = 0.0
     start_time = time.time()
 
     for epoch in range(max_epoch):
-            
+        if epoch == cyclic_start_epoch - 1:
+            print(f"Saving checkpoint after epoch {epoch}")
+            torch.save(model.state_dict(), checkpoint_path)
         # 싸이클마다 70번째 에포크 상태로 되돌아감
         if epoch >= cyclic_start_epoch and (epoch - cyclic_start_epoch) % cycle_length == 0:
             print(f"\nRestoring model to checkpoint from epoch {cyclic_start_epoch}")
@@ -158,8 +157,11 @@ def train():
             
             optimizer.zero_grad()
 
-            with torch.no_grad():
-                outputs = model(inputs)
+            # with torch.no_grad():
+            #     outputs = model(inputs)
+            # outputs = model.linear(outputs)
+            
+            outputs = model(inputs)
             outputs = model.linear(outputs)
             
             loss = criterion(outputs, targets)

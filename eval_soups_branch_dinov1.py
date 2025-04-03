@@ -42,77 +42,82 @@ def adaptformer_forward(model, inputs):
   
 
 def initialize_model(variant, config, device, args):
-    model_load = dino_variant._small_dino
-    dino = torch.hub.load('facebookresearch/dinov2', model_load)
-    dino_state_dict = dino.state_dict()
-    
-    
-    if args.type == 'linear':
-        model = dino
-        model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
-        
-    elif args.type == 'rein':
+    model_ = torch.hub.load('facebookresearch/dino:main', 'dino_vits16')
+    variant = dino_variant._dinov1_variant
+    dino_state_dict = model_.state_dict()
+    # print(dino_state_dict.keys())
+    new_state_dict = dict()
+    for k in dino_state_dict.keys():
+        new_k = k.replace("mlp.", "")
+        new_state_dict[new_k] = dino_state_dict[k]
+
+    if args.type == 'rein':
         model = rein.ReinsDinoVisionTransformer(**variant)
         model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
         
-    elif args.type == 'lora':
-        new_state_dict = dict()
-        for k in dino_state_dict.keys():
-            new_k = k.replace("attn.qkv", "attn.qkv.qkv")
-            new_state_dict[new_k] = dino_state_dict[k]
-        model = rein.LoRADinoVisionTransformer(dino)
-        model.dino.load_state_dict(new_state_dict, strict=False)
-        model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
-        model.to(device)
+    # elif args.type == 'lora':
+    #     new_state_dict = {}
+    #     for k, v in dino_state_dict.items():
+    #         new_k = k.replace("attn.qkv", "attn.qkv.qkv")
+    #         new_state_dict[new_k] = v
+    #     dino_state_dict = new_state_dict
+
+    #     model = rein.LoRADinoVisionTransformer(dino)
+    #     model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
+        
+        
         # model.to(device)  
 
-    # --------------------------------------------------------------------
-    # (A) 모델 전체 state_dict 불러옴 (아직은 랜덤 초기화 파라미터 포함)
-    model_dict = model.state_dict()
+    # # --------------------------------------------------------------------
+    # # (A) 모델 전체 state_dict 불러옴 (아직은 랜덤 초기화 파라미터 포함)
+    # model_dict = model.state_dict()
 
-    # (B) DINO state_dict 중 현재 모델 키/shape와 일치하는 항목만 filtering
-    filtered_dict = {}
-    for k, v in dino_state_dict.items():
-        if k in model_dict and model_dict[k].shape == v.shape:
-            filtered_dict[k] = v
+    # # (B) DINO state_dict 중 현재 모델 키/shape와 일치하는 항목만 filtering
+    # filtered_dict = {}
+    # for k, v in dino_state_dict.items():
+    #     if k in model_dict and model_dict[k].shape == v.shape:
+    #         filtered_dict[k] = v
 
-    # (C) 모델 dict에 DINO 파라미터를 덮어씌움
-    model_dict.update(filtered_dict)
+    # # (C) 모델 dict에 DINO 파라미터를 덮어씌움
+    # model_dict.update(filtered_dict)
 
-    # (D) strict=True로 최종 로딩 (filtered_dict 외 키는 그대로)
-    model.load_state_dict(model_dict, strict=True)
-    # --------------------------------------------------------------------
+    # # (D) strict=True로 최종 로딩 (filtered_dict 외 키는 그대로)
+    # model.load_state_dict(model_dict, strict=True)
+    # # --------------------------------------------------------------------
     model.to(device)
     
     return model
 
 
 def get_model_from_sd(state_dict, variant, config, device, args):
-    model_load = dino_variant._small_dino
-    dino = torch.hub.load('facebookresearch/dinov2', model_load)
-    dino_state_dict = dino.state_dict()
-    
-    if args.type == 'linear':
-        model = dino
-        model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
-        model.load_state_dict(state_dict, strict=True)
-        
-    elif args.type == 'rein':
+    model_ = torch.hub.load('facebookresearch/dino:main', 'dino_vits16')
+    variant = dino_variant._dinov1_variant
+    dino_state_dict = model_.state_dict()
+    # print(dino_state_dict.keys())
+    new_state_dict = dict()
+    for k in dino_state_dict.keys():
+        new_k = k.replace("mlp.", "")
+        new_state_dict[new_k] = dino_state_dict[k]    
+
+    if args.type == 'rein':
         model = rein.ReinsDinoVisionTransformer(**variant)
         model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
         model.load_state_dict(state_dict, strict=True)
+    # elif args.type == 'lora':
+    #     model_load = dino_variant._small_dino
+    #     dino = torch.hub.load('facebookresearch/dinov2', model_load)
+    #     dino_state_dict = dino.state_dict()
+    #     new_state_dict = dict()
+    #     for k in dino_state_dict.keys():
+    #         new_k = k.replace("attn.qkv", "attn.qkv.qkv")
+    #         new_state_dict[new_k] = dino_state_dict[k]
+    #     model = rein.LoRADinoVisionTransformer(dino)
+    #     model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
+    #     model.load_state_dict(state_dict, strict=True)
         
-    elif args.type == 'lora':
-        model_load = dino_variant._small_dino
-        dino = torch.hub.load('facebookresearch/dinov2', model_load)
-        dino_state_dict = dino.state_dict()
-        new_state_dict = dict()
-        for k in dino_state_dict.keys():
-            new_k = k.replace("attn.qkv", "attn.qkv.qkv")
-            new_state_dict[new_k] = dino_state_dict[k]
-        model = rein.LoRADinoVisionTransformer(dino)
-        model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
-        model.load_state_dict(state_dict, strict=True)
+    
+    model.to(device)
+    
     return model
 
 # Greedy soup model ensembling
@@ -150,17 +155,13 @@ def greedy_soup_ece(models, model_names, valid_loader, device, variant, config, 
 
         temp_model = get_model_from_sd(potential_greedy_soup_params, variant, config, device, args)
         temp_model.eval()
-        temp_model.to(device)
         
         # Evaluate the potential greedy soup model
         outputs, targets = [], []
         with torch.no_grad():
             for inputs, target in valid_loader:
                 inputs, target = inputs.to(device), target.to(device)
-                if args.type == 'linear':  
-                    output = temp_model(inputs)
-                    output = torch.softmax(output, dim=1)
-                elif args.type == 'rein':
+                if args.type == 'rein':
                     output = rein_forward(temp_model, inputs)
                     # print(output.shape)  
                 elif args.type == 'lora':
@@ -194,10 +195,10 @@ def greedy_soup_ece(models, model_names, valid_loader, device, variant, config, 
 
 def greedy_soup_acc(models, model_names, valid_loader, device, variant, config, args):
     # Evaluate and sort models by validation accuracy
-    if args.type == 'rein' or args.type == 'adaptformer':
+    if args.type == 'rein':
         model_accuracies = [(model, validation_accuracy(model, valid_loader, device, mode=args.type), name) for model, name in zip(models, model_names)]
-    elif args.type == 'lora':
-        model_accuracies = [(model, validation_accuracy_lora(model, valid_loader, device), name) for model, name in zip(models, model_names)]
+    # elif args.type == 'lora':
+    #     model_accuracies = [(model, validation_accuracy_lora(model, valid_loader, device), name) for model, name in zip(models, model_names)]
 
     
     # Sort models based on accuracy
@@ -236,7 +237,7 @@ def greedy_soup_acc(models, model_names, valid_loader, device, variant, config, 
         temp_model.eval()
         
         # Calculate validation accuracy with the potential new soup parameters
-        if args.type == 'linear' or args.type == 'rein' or args.type == 'adaptformer':
+        if args.type == 'rein' or args.type == 'adaptformer':
             held_out_val_accuracy = validation_accuracy(temp_model, valid_loader, device, mode=args.type)
         elif args.type == 'lora':
             held_out_val_accuracy = validation_accuracy_lora(temp_model, valid_loader, device)
@@ -330,7 +331,6 @@ def train():
 
     model = get_model_from_sd(greedy_soup_params, variant, config, device, args)
     model.eval()
-    model.to(device)
     
 
     ## validation 
@@ -345,11 +345,7 @@ def train():
     with torch.no_grad():
         for inputs, target in test_loader:
             inputs, target = inputs.to(device), target.to(device)
-            if args.type == 'linear':
-                output = model(inputs)
-                output = model.linear(output)
-                output = torch.softmax(output, dim=1)
-            elif args.type == 'rein':
+            if args.type == 'rein':
                 output = rein_forward(model, inputs)
                 # print(output.shape)  
             elif args.type == 'lora':

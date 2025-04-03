@@ -2,6 +2,7 @@ import os
 import pandas as pd
 import random
 import torch
+import time
 from torchvision import transforms
 from torch.utils.data import Dataset, DataLoader
 from PIL import Image
@@ -28,8 +29,13 @@ class HAM10000Dataset(Dataset):
 
         return image, label
 
-# DataLoader function
-def get_dataloaders(data_dir, batch_size=32, num_workers=4, random_seed=42):
+# DataLoader function with dynamic seed
+def get_dataloaders(data_dir, batch_size=32, num_workers=4, random_seed=None):
+    # Generate random seed from current time if not provided
+    if random_seed is None:
+        random_seed = int(time.time()) % (2**32)
+    print(f"Using random seed: {random_seed}")  # 확인용 출력
+
     # Set random seed for reproducibility
     random.seed(random_seed)
     torch.manual_seed(random_seed)

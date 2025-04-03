@@ -52,6 +52,9 @@ def validate(model, valid_loader, device, args):
     with torch.no_grad():
         for inputs, target in valid_loader:
             inputs, target = inputs.to(device), target.to(device)
+            if args.type == 'linear':
+                output = model(inputs)
+                output = torch.softmax(output, dim=1)
             if args.type == 'rein':
                 output = rein_forward(model, inputs)
                 # print(output.shape)  

@@ -42,7 +42,7 @@ def train():
     save_path = os.path.join(config['save_path'], args.save_path)
     data_path = config['data_root']
     batch_size = int(config['batch_size'])
-    max_epoch = 100
+    max_epoch = 200
     # noise_rate = args.noise_rate
 
     if not os.path.exists(save_path):
@@ -119,8 +119,11 @@ def train():
             
             optimizer.zero_grad()
             
-            with torch.no_grad():
-                outputs = model(inputs)
+            # with torch.no_grad():
+            #     outputs = model(inputs)
+            # outputs = model.linear(outputs)
+            
+            outputs = model(inputs)
             outputs = model.linear(outputs)
             
             loss = criterion(outputs, targets)

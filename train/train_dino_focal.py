@@ -12,7 +12,7 @@ import torch.nn as nn
 import argparse
 import timm
 import numpy as np
-from utils import read_conf, validation_accuracy #, calculate_flops
+from util import read_conf, validation_accuracy #, calculate_flops
 
 import random
 import rein

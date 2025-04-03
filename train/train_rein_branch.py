@@ -30,6 +30,27 @@ def set_requires_grad(model, layers_to_train):
         else:
             param.requires_grad = False
             
+# def set_requires_grad(model: nn.Module, keywords):
+#     """
+#     notice:key in name!
+#     """
+#     requires_grad_names = []
+#     num_params = 0
+#     num_trainable = 0
+#     params = []
+#     for name, param in model.named_parameters():
+#         num_params += param.numel()
+#         if any(key in name for key in keywords):
+#             print(name)
+#             param.requires_grad = True
+#             requires_grad_names.append(name)
+#             num_trainable += param.numel()
+#             params.append(param)
+#         else:
+#             # print(name, 'no_grad')
+#             param.requires_grad = False
+#     return params
+            
 def train():
     parser = argparse.ArgumentParser()
     parser.add_argument('--data', '-d', type=str, default='cifar100')
@@ -77,7 +98,7 @@ def train():
         )
         new_state_dict = dino_state_dict
 
-        set_requires_grad(model, ["reins", "linear"])
+        # set_requires_grad(model, ["reins", "linear"])
         model.dino.load_state_dict(new_state_dict, strict=False)
         model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
         model.to(device)  
@@ -126,14 +147,13 @@ def train():
     
     saver = timm.utils.CheckpointSaver(model, optimizer, checkpoint_dir= save_path, max_history = 1) 
 
-    if not os.path.exists(checkpoint_path):
-        print(f"Saving checkpoint for epoch {cyclic_start_epoch}")
-        torch.save(model.state_dict(), checkpoint_path)
-
     avg_accuracy = 0.0
     start_time = time.time()
 
     for epoch in range(max_epoch):
+        if epoch == cyclic_start_epoch - 1:
+            print(f"Saving checkpoint after epoch {epoch}")
+            torch.save(model.state_dict(), checkpoint_path)
             
         # 싸이클마다 70번째 에포크 상태로 되돌아감
         if epoch >= cyclic_start_epoch and (epoch - cyclic_start_epoch) % cycle_length == 0:
