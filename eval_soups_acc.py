@@ -9,7 +9,7 @@ import argparse
 import numpy as np
 from torch.cuda.amp.autocast_mode import autocast
 
-from utils import read_conf, validation_accuracy, ModelWithTemperature, validate, evaluate, calculate_ece, calculate_nll, validation_accuracy_lora, compute_aurc, compute_auroc, compute_fpr95, ece, sce, ace, tace, reliability_diagram
+from util import read_conf, validation_accuracy, ModelWithTemperature, validate, evaluate, calculate_ece, calculate_nll, validation_accuracy_lora, compute_aurc, compute_auroc, compute_fpr95, ece, sce, ace, tace, reliability_diagram
 import dino_variant
 from data import dataloader
 import rein
@@ -224,16 +224,27 @@ def train():
     # num_workers = int(config['num_workers'])   
     
     save_paths = [
-        os.path.join(config['save_path'], 'reins_focal_1'),
-        os.path.join(config['save_path'], 'reins_focal_2'),
-        os.path.join(config['save_path'], 'reins_focal_3'),
-        os.path.join(config['save_path'], 'reins_focal_4'),
-        os.path.join(config['save_path'], 'reins_focal_5'),
-        os.path.join(config['save_path'], 'reins_focal_6'),
-        os.path.join(config['save_path'], 'reins_focal_7'),
-        os.path.join(config['save_path'], 'reins_focal_8'),
-        os.path.join(config['save_path'], 'reins_focal_9'),
-        os.path.join(config['save_path'], 'reins_focal_10'),
+        # os.path.join(config['save_path'], 'reins_focal_1'),
+        # os.path.join(config['save_path'], 'reins_focal_2'),
+        # os.path.join(config['save_path'], 'reins_focal_3'),
+        # os.path.join(config['save_path'], 'reins_focal_4'),
+        # os.path.join(config['save_path'], 'reins_focal_5'),
+        # os.path.join(config['save_path'], 'reins_focal_6'),
+        # os.path.join(config['save_path'], 'reins_focal_7'),
+        # os.path.join(config['save_path'], 'reins_focal_8'),
+        # os.path.join(config['save_path'], 'reins_focal_9'),
+        # os.path.join(config['save_path'], 'reins_focal_10'),
+        
+        os.path.join(config['save_path'], 'lora_focal_1'),
+        os.path.join(config['save_path'], 'lora_focal_2'),
+        os.path.join(config['save_path'], 'lora_focal_3'),
+        os.path.join(config['save_path'], 'lora_focal_4'),
+        os.path.join(config['save_path'], 'lora_focal_5'),
+        os.path.join(config['save_path'], 'lora_focal_6'),
+        os.path.join(config['save_path'], 'lora_focal_7'),
+        os.path.join(config['save_path'], 'lora_focal_8'),
+        os.path.join(config['save_path'], 'lora_focal_9'),
+        os.path.join(config['save_path'], 'lora_focal_10'),
     ]
     
     model_names = [os.path.basename(path) for path in save_paths]

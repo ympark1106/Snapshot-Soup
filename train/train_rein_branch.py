@@ -98,8 +98,8 @@ def train():
         )
         new_state_dict = dino_state_dict
 
-        # set_requires_grad(model, ["reins", "linear"])
-        model.dino.load_state_dict(new_state_dict, strict=False)
+        set_requires_grad(model, ["reins", "linear"])
+        model.load_state_dict(new_state_dict, strict=False)
         model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
         model.to(device)  
 
