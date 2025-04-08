@@ -2,6 +2,7 @@ import os
 import pandas as pd
 import random
 import torch
+import time
 from torchvision import transforms
 from torch.utils.data import Dataset, DataLoader
 from PIL import Image
@@ -58,12 +59,15 @@ class APTOS2019_Dataset(Dataset):
         return image, label
 
 # DataLoader function
-def get_dataloaders(data_dir, batch_size=32, num_workers=4, pin_memory=False, val_split=0.2, random_seed=42):
+def get_dataloaders(data_dir, batch_size=32, num_workers=4, pin_memory=False, val_split=0.2, random_seed=None):
+    if random_seed is None:
+        random_seed = int(time.time()) % (2**32)
+    print(f"Using random seed: {random_seed}")  # 확인용 출력
+
     # Set random seed for reproducibility
     random.seed(random_seed)
     torch.manual_seed(random_seed)
     torch.cuda.manual_seed_all(random_seed)
-    
     # Image transformations
     train_transform = transforms.Compose([
         transforms.Resize((224, 224)),

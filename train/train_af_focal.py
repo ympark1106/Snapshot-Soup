@@ -1,27 +1,23 @@
 import warnings
 warnings.filterwarnings("ignore", message="xFormers is not available")
-
-
+import sys
+sys.path.append("/SSDe/youmin_park/adapter-weight-ensemble/")
 import os
-os.environ['KMP_DUPLICATE_LIB_OK']='True'
-os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-os.environ["TORCH_USE_CUDA_DSA"] = '1'
 import torch
 import torch.nn as nn
 
 import argparse
 import timm
 import numpy as np
-from utils import read_conf, validation_accuracy #, calculate_flops
-
 import random
+
 import rein
+from util import read_conf, validation_accuracy
 
 import dino_variant
 from sklearn.metrics import f1_score
 from data import cifar10, cifar100, cub, ham10000, bloodmnist
-from losses import RankMixup_MNDCG, RankMixup_MRL, focal_loss, focal_loss_adaptive_gamma
+from losses import focal_loss
 
 def count_trainable_params(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -50,7 +46,7 @@ def train():
     save_path = os.path.join(config['save_path'], args.save_path)
     data_path = config['data_root']
     batch_size = int(config['batch_size'])
-    max_epoch = int(config['epoch'])
+    max_epoch = 100
     # noise_rate = args.noise_rate
 
     if not os.path.exists(save_path):
@@ -64,11 +60,11 @@ def train():
     elif args.data == 'cifar100':
         train_loader, valid_loader = cifar100.get_train_valid_loader(data_dir=data_path, augment=True, batch_size=32, valid_size=0.1, random_seed=42, shuffle=True, num_workers=4, pin_memory=True)
     elif args.data == 'cub':
-        train_loader, valid_loader = cub.get_train_val_loader(data_path, batch_size=32, scale_size=256, crop_size=224, num_workers=8, pin_memory=True)
+        train_loader, valid_loader = cub.get_train_val_loader(data_path, batch_size=batch_size, scale_size=256, crop_size=224, num_workers=8, pin_memory=True)
     elif args.data == 'ham10000':
-        train_loader, valid_loader, test_loader = ham10000.get_dataloaders(data_path, batch_size=32, num_workers=4)
+        train_loader, valid_loader, test_loader = ham10000.get_dataloaders(data_path, batch_size=batch_size, num_workers=4)
     elif args.data == 'bloodmnist':
-        train_loader, valid_loader,_ = bloodmnist.get_dataloader(data_path, batch_size=32,num_workers=4)
+        train_loader, valid_loader,_ = bloodmnist.get_dataloader(data_path, batch_size=batch_size,num_workers=4)
         
     if args.netsize == 's':
         model_load = dino_variant._small_dino
@@ -101,7 +97,7 @@ def train():
     
     # criterion = torch.nn.CrossEntropyLoss()
     # criterion = focal_loss.FocalLoss(gamma=3) #gamma 커지면 easy sample에 대한 loss 감소
-    criterion = focal_loss_adaptive_gamma.FocalLossAdaptive(gamma=3)
+    criterion = focal_loss.FocalLoss(gamma=3)
     model.eval()
 
     

@@ -86,24 +86,7 @@ def train():
         train_loader, valid_loader, test_loader = eyepacs.get_dataloaders(data_path, batch_size=batch_size, pin_memory=True,num_workers=16)
     elif args.data == 'tinyimagenet':
         train_loader, valid_loader, test_loader = tinyimagenet.get_dataloaders(data_path, batch_size=128, num_workers=4, pin_memory=True, val_split=0.1)
-        
-    tuning_config = argparse.Namespace()
-    if args.type == 'adaptformer':
-        # Adaptformer
-        tuning_config.ffn_adapt = True
-        tuning_config.ffn_num = 64
-        tuning_config.ffn_option="parallel"
-        tuning_config.ffn_adapter_layernorm_option="none"
-        tuning_config.ffn_adapter_init_option="lora"
-        tuning_config.ffn_adapter_scalar="0.1"
-        tuning_config.d_model=384 # base -> 768
-        # VPT
-        tuning_config.vpt_on = False
-        tuning_config.vpt_num = 1
-
-        tuning_config.fulltune = False
-
-        
+                
 
     if args.net == 'dinov2':
         model_load = dino_variant._small_dino
@@ -153,26 +136,40 @@ def train():
         model.dino.load_state_dict(new_state_dict, strict=False)
         model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
         model.to(device)
-    # elif args.type == 'adaptformer':
-    #     new_state_dict = dict()
-    #     for k in dino_state_dict.keys():
-    #         new_k = k.replace("mlp.", "")
-    #         new_state_dict[new_k] = dino_state_dict[k]
-    #     extra_tokens = dino_state_dict['pos_embed'][:, :1]
-    #     src_weight = dino_state_dict['pos_embed'][:, 1:]
-    #     src_weight = src_weight.reshape(1, 37, 37, 384).permute(0, 3, 1, 2)
-    #     # src_weight = src_weight.reshape(1, 37, 37, 768).permute(0, 3, 1, 2) ＃ for base model
+    elif args.type == 'adaptformer':
+        tuning_config = argparse.Namespace()
+        # Adaptformer
+        tuning_config.ffn_adapt = True
+        tuning_config.ffn_num = 64
+        tuning_config.ffn_option="parallel"
+        tuning_config.ffn_adapter_layernorm_option="none"
+        tuning_config.ffn_adapter_init_option="lora"
+        tuning_config.ffn_adapter_scalar="0.1"
+        tuning_config.d_model=384 # base -> 768
+        # VPT
+        tuning_config.vpt_on = False
+        tuning_config.vpt_num = 1
 
-    #     dst_weight = F.interpolate(
-    #         src_weight.float(), size=16, align_corners=False, mode='bilinear') # base model -> 16
-    #     dst_weight = torch.flatten(dst_weight, 2).transpose(1, 2)
-    #     dst_weight = dst_weight.to(src_weight.dtype)
-    #     new_state_dict['pos_embed'] = torch.cat((extra_tokens, dst_weight), dim=1)
-    #     model = adaptformer.VisionTransformer(patch_size=14, embed_dim= 384, tuning_config = tuning_config, use_dinov2=True)
-    #     model.load_state_dict(new_state_dict, strict=False) 
+        tuning_config.fulltune = False
+        new_state_dict = dict()
+        for k in dino_state_dict.keys():
+            new_k = k.replace("mlp.", "")
+            new_state_dict[new_k] = dino_state_dict[k]
+        extra_tokens = dino_state_dict['pos_embed'][:, :1]
+        src_weight = dino_state_dict['pos_embed'][:, 1:]
+        src_weight = src_weight.reshape(1, 37, 37, 384).permute(0, 3, 1, 2)
+        # src_weight = src_weight.reshape(1, 37, 37, 768).permute(0, 3, 1, 2) ＃ for base model
 
-    #     model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
-    #     model.to(device)  
+        dst_weight = F.interpolate(
+            src_weight.float(), size=16, align_corners=False, mode='bilinear') # base model -> 16
+        dst_weight = torch.flatten(dst_weight, 2).transpose(1, 2)
+        dst_weight = dst_weight.to(src_weight.dtype)
+        new_state_dict['pos_embed'] = torch.cat((extra_tokens, dst_weight), dim=1)
+        model = adaptformer.VisionTransformer(patch_size=14, embed_dim= 384, tuning_config = tuning_config, use_dinov2=True)
+        model.load_state_dict(new_state_dict, strict=False) 
+
+        model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
+        model.to(device)  
 
     print(model)
 
