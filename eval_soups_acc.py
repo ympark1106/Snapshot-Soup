@@ -5,6 +5,7 @@ import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6,7"
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import argparse
 import numpy as np
 from torch.cuda.amp.autocast_mode import autocast
@@ -13,6 +14,7 @@ from util import read_conf, validation_accuracy, ModelWithTemperature, validate,
 import dino_variant
 from data import dataloader
 import rein
+import adaptformer
 
 # Model forward function
 def rein_forward(model, inputs, temp_scaler=None):
@@ -30,6 +32,11 @@ def lora_forward(model, inputs):
         output = torch.softmax(output, dim=1)
     return output
 
+def adaptformer_forward(model, inputs):
+    f = model.forward_features(inputs)
+    outputs = model.linear(f)
+    outputs = torch.softmax(outputs, dim=1) 
+    return outputs
 
 # # Model initialization
 # def initialize_model(variant, config, device, args):
@@ -76,6 +83,36 @@ def initialize_model(variant, config, device, args):
 
         model = rein.LoRADinoVisionTransformer(dino)
         model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
+    elif args.type == 'adaptformer':
+        tuning_config = argparse.Namespace()
+        # Adaptformer
+        tuning_config.ffn_adapt = True
+        tuning_config.ffn_num = 64
+        tuning_config.ffn_option="parallel"
+        tuning_config.ffn_adapter_layernorm_option="none"
+        tuning_config.ffn_adapter_init_option="lora"
+        tuning_config.ffn_adapter_scalar="0.1"
+        tuning_config.d_model=384 # base -> 768
+        # VPT
+        tuning_config.vpt_on = False
+        tuning_config.vpt_num = 1
+
+        tuning_config.fulltune = False 
+        
+        new_state_dict = dict()
+        for k in dino_state_dict.keys():
+            new_k = k.replace("mlp.", "")
+            new_state_dict[new_k] = dino_state_dict[k]
+        extra_tokens = dino_state_dict['pos_embed'][:, :1]
+        src_weight = dino_state_dict['pos_embed'][:, 1:]
+        src_weight = src_weight.reshape(1, 37, 37, 384).permute(0, 3, 1, 2)
+        dst_weight = F.interpolate(
+            src_weight.float(), size=16, align_corners=False, mode='bilinear') # base model -> 16
+        dst_weight = torch.flatten(dst_weight, 2).transpose(1, 2)
+        dst_weight = dst_weight.to(src_weight.dtype)
+        new_state_dict['pos_embed'] = torch.cat((extra_tokens, dst_weight), dim=1)
+        model = adaptformer.VisionTransformer(patch_size=14, embed_dim= 384, tuning_config = tuning_config, use_dinov2=True)
+        model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
 
     # --------------------------------------------------------------------
     # (A) 모델 전체 state_dict 불러옴 (아직은 랜덤 초기화 파라미터 포함)
@@ -115,6 +152,36 @@ def get_model_from_sd(state_dict, variant, config, device, args):
         model = rein.LoRADinoVisionTransformer(dino)
         model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
         model.load_state_dict(state_dict, strict=True)
+    elif args.type == 'adaptformer':
+        tuning_config = argparse.Namespace()
+        # Adaptformer
+        tuning_config.ffn_adapt = True
+        tuning_config.ffn_num = 64
+        tuning_config.ffn_option="parallel"
+        tuning_config.ffn_adapter_layernorm_option="none"
+        tuning_config.ffn_adapter_init_option="lora"
+        tuning_config.ffn_adapter_scalar="0.1"
+        tuning_config.d_model=384 # base -> 768
+        # VPT
+        tuning_config.vpt_on = False
+        tuning_config.vpt_num = 1
+
+        tuning_config.fulltune = False 
+        
+        new_state_dict = dict()
+        for k in dino_state_dict.keys():
+            new_k = k.replace("mlp.", "")
+            new_state_dict[new_k] = dino_state_dict[k]
+        extra_tokens = dino_state_dict['pos_embed'][:, :1]
+        src_weight = dino_state_dict['pos_embed'][:, 1:]
+        src_weight = src_weight.reshape(1, 37, 37, 384).permute(0, 3, 1, 2)
+        dst_weight = F.interpolate(
+            src_weight.float(), size=16, align_corners=False, mode='bilinear') # base model -> 16
+        dst_weight = torch.flatten(dst_weight, 2).transpose(1, 2)
+        dst_weight = dst_weight.to(src_weight.dtype)
+        new_state_dict['pos_embed'] = torch.cat((extra_tokens, dst_weight), dim=1)
+        model = adaptformer.VisionTransformer(patch_size=14, embed_dim= 384, tuning_config = tuning_config, use_dinov2=True)
+        model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
     model.to(device)
     
     return model
@@ -134,9 +201,11 @@ def validate_model(model, valid_loader, device, mode):
 def greedy_soup_ensemble(models, model_names, valid_loader, variant, config, args, device):
     # Evaluate and sort models by validation accuracy
     if args.type == 'rein':
-        model_accuracies = [(model, validation_accuracy(model, valid_loader, device), name) for model, name in zip(models, model_names)]
+        model_accuracies = [(model, validation_accuracy(model, valid_loader, device, mode=args.type), name) for model, name in zip(models, model_names)]
     elif args.type == 'lora':
         model_accuracies = [(model, validation_accuracy_lora(model, valid_loader, device), name) for model, name in zip(models, model_names)]
+    elif args.type == 'adaptformer':
+        model_accuracies = [(model, validation_accuracy(model, valid_loader, device, mode=args.type), name) for model, name in zip(models, model_names)]
     
     # Sort models based on accuracy
     sorted_models = sorted(model_accuracies, key=lambda x: x[1], reverse=True)
@@ -178,6 +247,8 @@ def greedy_soup_ensemble(models, model_names, valid_loader, variant, config, arg
             held_out_val_accuracy = validation_accuracy(temp_model, valid_loader, device, mode='rein')
         elif args.type == 'lora':
             held_out_val_accuracy = validation_accuracy_lora(temp_model, valid_loader, device)
+        elif args.type == 'adaptformer':
+            held_out_val_accuracy = validation_accuracy(temp_model, valid_loader, device, mode='adaptformer')
         
         print(f'Held-out validation accuracy: {held_out_val_accuracy}, best accuracy so far: {max_accuracy}.\n')
         
@@ -223,29 +294,46 @@ def train():
     batch_size = int(config['batch_size'])
     # num_workers = int(config['num_workers'])   
     
-    save_paths = [
-        # os.path.join(config['save_path'], 'reins_focal_1'),
-        # os.path.join(config['save_path'], 'reins_focal_2'),
-        # os.path.join(config['save_path'], 'reins_focal_3'),
-        # os.path.join(config['save_path'], 'reins_focal_4'),
-        # os.path.join(config['save_path'], 'reins_focal_5'),
-        # os.path.join(config['save_path'], 'reins_focal_6'),
-        # os.path.join(config['save_path'], 'reins_focal_7'),
-        # os.path.join(config['save_path'], 'reins_focal_8'),
-        # os.path.join(config['save_path'], 'reins_focal_9'),
-        # os.path.join(config['save_path'], 'reins_focal_10'),
-        
-        os.path.join(config['save_path'], 'lora_focal_1'),
-        os.path.join(config['save_path'], 'lora_focal_2'),
-        os.path.join(config['save_path'], 'lora_focal_3'),
-        os.path.join(config['save_path'], 'lora_focal_4'),
-        os.path.join(config['save_path'], 'lora_focal_5'),
-        os.path.join(config['save_path'], 'lora_focal_6'),
-        os.path.join(config['save_path'], 'lora_focal_7'),
-        os.path.join(config['save_path'], 'lora_focal_8'),
-        os.path.join(config['save_path'], 'lora_focal_9'),
-        os.path.join(config['save_path'], 'lora_focal_10'),
-    ]
+    if args.type == 'rein':
+        save_paths = [
+            os.path.join(config['save_path'], 'reins_focal_1'),
+            os.path.join(config['save_path'], 'reins_focal_2'),
+            os.path.join(config['save_path'], 'reins_focal_3'),
+            os.path.join(config['save_path'], 'reins_focal_4'),
+            os.path.join(config['save_path'], 'reins_focal_5'),
+            os.path.join(config['save_path'], 'reins_focal_6'),
+            os.path.join(config['save_path'], 'reins_focal_7'),
+            os.path.join(config['save_path'], 'reins_focal_8'),
+            os.path.join(config['save_path'], 'reins_focal_9'),
+            os.path.join(config['save_path'], 'reins_focal_10')
+        ]
+    elif args.type == 'lora':
+        save_paths = [
+            os.path.join(config['save_path'], 'lora_focal_1'),
+            os.path.join(config['save_path'], 'lora_focal_2'),
+            os.path.join(config['save_path'], 'lora_focal_3'),
+            os.path.join(config['save_path'], 'lora_focal_4'),
+            os.path.join(config['save_path'], 'lora_focal_5'),
+            os.path.join(config['save_path'], 'lora_focal_6'),
+            os.path.join(config['save_path'], 'lora_focal_7'),
+            os.path.join(config['save_path'], 'lora_focal_8'),
+            os.path.join(config['save_path'], 'lora_focal_9'),
+            os.path.join(config['save_path'], 'lora_focal_10'),
+        ]
+    elif args.type == 'adaptformer':
+        save_paths = [
+            os.path.join(config['save_path'], 'af_focal_1'),
+            os.path.join(config['save_path'], 'af_focal_2'),
+            os.path.join(config['save_path'], 'af_focal_3'),
+            os.path.join(config['save_path'], 'af_focal_4'),
+            os.path.join(config['save_path'], 'af_focal_5'),
+            os.path.join(config['save_path'], 'af_focal_6'),
+            os.path.join(config['save_path'], 'af_focal_7'),
+            os.path.join(config['save_path'], 'af_focal_8'),
+            os.path.join(config['save_path'], 'af_focal_9'),
+            os.path.join(config['save_path'], 'af_focal_10'),
+        ]
+    
     
     model_names = [os.path.basename(path) for path in save_paths]
     
@@ -290,6 +378,9 @@ def train():
                     output = model.linear(features)
                     output = torch.softmax(output, dim=1)
                     # print(output.shape)
+            elif args.type == 'adaptformer':
+                output = adaptformer_forward(model, inputs)
+                
                 
                 
             outputs.append(output.cpu())

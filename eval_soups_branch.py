@@ -298,6 +298,8 @@ def greedy_soup_acc(models, model_names, valid_loader, device, variant, config, 
             held_out_val_accuracy = validation_accuracy(temp_model, valid_loader, device, mode=args.type)
         elif args.type == 'lora':
             held_out_val_accuracy = validation_accuracy_lora(temp_model, valid_loader, device)
+        elif args.type == 'adaptformer':
+            held_out_val_accuracy = validation_accuracy(temp_model, valid_loader, device, mode=args.type)
 
         
         print(f'Held-out validation accuracy: {held_out_val_accuracy}, best accuracy so far: {max_accuracy}.\n')
