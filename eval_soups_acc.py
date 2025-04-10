@@ -153,35 +153,28 @@ def get_model_from_sd(state_dict, variant, config, device, args):
         model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
         model.load_state_dict(state_dict, strict=True)
     elif args.type == 'adaptformer':
-        tuning_config = argparse.Namespace()
-        # Adaptformer
-        tuning_config.ffn_adapt = True
-        tuning_config.ffn_num = 64
-        tuning_config.ffn_option="parallel"
-        tuning_config.ffn_adapter_layernorm_option="none"
-        tuning_config.ffn_adapter_init_option="lora"
-        tuning_config.ffn_adapter_scalar="0.1"
-        tuning_config.d_model=384 # base -> 768
-        # VPT
-        tuning_config.vpt_on = False
-        tuning_config.vpt_num = 1
-
-        tuning_config.fulltune = False 
-        
-        new_state_dict = dict()
-        for k in dino_state_dict.keys():
-            new_k = k.replace("mlp.", "")
-            new_state_dict[new_k] = dino_state_dict[k]
-        extra_tokens = dino_state_dict['pos_embed'][:, :1]
-        src_weight = dino_state_dict['pos_embed'][:, 1:]
-        src_weight = src_weight.reshape(1, 37, 37, 384).permute(0, 3, 1, 2)
-        dst_weight = F.interpolate(
-            src_weight.float(), size=16, align_corners=False, mode='bilinear') # base model -> 16
-        dst_weight = torch.flatten(dst_weight, 2).transpose(1, 2)
-        dst_weight = dst_weight.to(src_weight.dtype)
-        new_state_dict['pos_embed'] = torch.cat((extra_tokens, dst_weight), dim=1)
-        model = adaptformer.VisionTransformer(patch_size=14, embed_dim= 384, tuning_config = tuning_config, use_dinov2=True)
-        model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
+         # model_load = dino_variant._small_dino
+         # dino = torch.hub.load('facebookresearch/dinov2', model_load)
+         # dino_state_dict = dino.state_dict()
+         
+         tuning_config = argparse.Namespace()
+         # Adaptformer
+         tuning_config.ffn_adapt = True
+         tuning_config.ffn_num = 64
+         tuning_config.ffn_option="parallel"
+         tuning_config.ffn_adapter_layernorm_option="none"
+         tuning_config.ffn_adapter_init_option="lora"
+         tuning_config.ffn_adapter_scalar="0.1"
+         tuning_config.d_model=384 # base -> 768
+         # VPT
+         tuning_config.vpt_on = False
+         tuning_config.vpt_num = 1
+ 
+         tuning_config.fulltune = False 
+         
+         model = adaptformer.VisionTransformer(patch_size=14, embed_dim= 384, tuning_config = tuning_config, use_dinov2=True)
+         model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
+         model.load_state_dict(state_dict, strict=False) 
     model.to(device)
     
     return model
@@ -358,8 +351,8 @@ def train():
     model1.load_state_dict(greedy_soup_params)
     model1.eval() 
            
-    if args.type == 'rein':
-        test_accuracy = validation_accuracy(model1, test_loader, device, mode='rein')
+    if args.type == 'rein' or args.type == 'adaptformer':
+        test_accuracy = validation_accuracy(model1, test_loader, device, mode=args.type)
     elif args.type == 'lora':
         test_accuracy = validation_accuracy_lora(model1, test_loader, device)  
     print("\n🔹 Accuracy Metrics 🔹")  

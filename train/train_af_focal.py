@@ -20,7 +20,7 @@ from util import read_conf, validation_accuracy
 
 import dino_variant
 from sklearn.metrics import f1_score
-from data import cifar10, cifar100, cub, ham10000, bloodmnist
+from data import cifar10, cifar100, cub, ham10000, bloodmnist, tinyimagenet, eyepacs
 from losses import focal_loss
 
 def count_trainable_params(model):
@@ -79,8 +79,10 @@ def train():
         train_loader, valid_loader = cifar100.get_train_valid_loader(data_dir=data_path, augment=True, batch_size=batch_size, valid_size=0.1, random_seed=None, shuffle=True, num_workers=4, pin_memory=True)
     elif args.data == 'ham10000':
         train_loader, valid_loader, test_loader = ham10000.get_dataloaders(data_path, batch_size=batch_size, num_workers=4)
-    elif args.data == 'bloodmnist':
-        train_loader, valid_loader,_ = bloodmnist.get_dataloader(data_path, batch_size=batch_size,num_workers=4)
+    elif args.data == 'eyepacs':
+        train_loader, valid_loader, test_loader = eyepacs.get_dataloaders(data_path, batch_size=batch_size, pin_memory=True,num_workers=16)
+    elif args.data == 'tinyimagenet':
+        train_loader, valid_loader, _ = tinyimagenet.get_dataloaders(data_path, batch_size=128, num_workers=4, pin_memory=True, val_split=0.1)
         
     if args.netsize == 's':
         model_load = dino_variant._small_dino

@@ -94,6 +94,9 @@ def initialize_model(variant, config, device, args):
 
 
 def get_model_from_sd(state_dict, variant, config, device, args):
+    model_load = dino_variant._small_dino
+    dino = torch.hub.load('facebookresearch/dinov2', model_load)
+    dino_state_dict = dino.state_dict()
     if args.type == 'rein':
         model = rein.ReinsDinoVisionTransformer(**variant)
         model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
@@ -110,35 +113,28 @@ def get_model_from_sd(state_dict, variant, config, device, args):
         model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
         model.load_state_dict(state_dict, strict=True)
     elif args.type == 'adaptformer':
-        tuning_config = argparse.Namespace()
-        # Adaptformer
-        tuning_config.ffn_adapt = True
-        tuning_config.ffn_num = 64
-        tuning_config.ffn_option="parallel"
-        tuning_config.ffn_adapter_layernorm_option="none"
-        tuning_config.ffn_adapter_init_option="lora"
-        tuning_config.ffn_adapter_scalar="0.1"
-        tuning_config.d_model=384 # base -> 768
-        # VPT
-        tuning_config.vpt_on = False
-        tuning_config.vpt_num = 1
-
-        tuning_config.fulltune = False 
-        
-        new_state_dict = dict()
-        for k in dino_state_dict.keys():
-            new_k = k.replace("mlp.", "")
-            new_state_dict[new_k] = dino_state_dict[k]
-        extra_tokens = dino_state_dict['pos_embed'][:, :1]
-        src_weight = dino_state_dict['pos_embed'][:, 1:]
-        src_weight = src_weight.reshape(1, 37, 37, 384).permute(0, 3, 1, 2)
-        dst_weight = F.interpolate(
-            src_weight.float(), size=16, align_corners=False, mode='bilinear') # base model -> 16
-        dst_weight = torch.flatten(dst_weight, 2).transpose(1, 2)
-        dst_weight = dst_weight.to(src_weight.dtype)
-        new_state_dict['pos_embed'] = torch.cat((extra_tokens, dst_weight), dim=1)
-        model = adaptformer.VisionTransformer(patch_size=14, embed_dim= 384, tuning_config = tuning_config, use_dinov2=True)
-        model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
+         # model_load = dino_variant._small_dino
+         # dino = torch.hub.load('facebookresearch/dinov2', model_load)
+         # dino_state_dict = dino.state_dict()
+         
+         tuning_config = argparse.Namespace()
+         # Adaptformer
+         tuning_config.ffn_adapt = True
+         tuning_config.ffn_num = 64
+         tuning_config.ffn_option="parallel"
+         tuning_config.ffn_adapter_layernorm_option="none"
+         tuning_config.ffn_adapter_init_option="lora"
+         tuning_config.ffn_adapter_scalar="0.1"
+         tuning_config.d_model=384 # base -> 768
+         # VPT
+         tuning_config.vpt_on = False
+         tuning_config.vpt_num = 1
+ 
+         tuning_config.fulltune = False 
+         
+         model = adaptformer.VisionTransformer(patch_size=14, embed_dim= 384, tuning_config = tuning_config, use_dinov2=True)
+         model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
+         model.load_state_dict(state_dict, strict=False) 
     model.to(device)
     
     return model
@@ -326,6 +322,8 @@ def train():
                     output = model.linear(features)
                     output = torch.softmax(output, dim=1)
                     # print(output.shape)
+            elif args.type == 'adaptformer':
+                output = adaptformer_forward(model, inputs)
                 
                 
             outputs.append(output.cpu())
@@ -335,16 +333,16 @@ def train():
     targets = torch.cat(targets).numpy().astype(int)
     evaluate(outputs, targets, verbose=True)
     
-    ece_val = ece(targets, outputs, num_bins=15)
-    sce_val = sce(targets, outputs, num_bins=15)
-    ace_val = ace(targets, outputs, num_bins=15)
-    tace_val = tace(targets, outputs, num_bins=15, threshold=0.01)
+    # ece_val = ece(targets, outputs, num_bins=15)
+    # sce_val = sce(targets, outputs, num_bins=15)
+    # ace_val = ace(targets, outputs, num_bins=15)
+    # tace_val = tace(targets, outputs, num_bins=15, threshold=0.01)
     
-    print("\n🔹 Calibration Metrics (GCE 기반) 🔹")
-    print(f"ECE  (Expected Calibration Error):           {ece_val * 100:.2f}%")
-    print(f"SCE  (Static Calibration Error):             {sce_val * 100:.2f}%")
-    print(f"ACE  (Adaptive Calibration Error):           {ace_val * 100:.2f}%")
-    print(f"TACE (Thresholded Adaptive Calibration):     {tace_val * 100:.2f}%")
+    # print("\n🔹 Calibration Metrics (GCE 기반) 🔹")
+    # print(f"ECE  (Expected Calibration Error):           {ece_val * 100:.2f}%")
+    # print(f"SCE  (Static Calibration Error):             {sce_val * 100:.2f}%")
+    # print(f"ACE  (Adaptive Calibration Error):           {ace_val * 100:.2f}%")
+    # print(f"TACE (Thresholded Adaptive Calibration):     {tace_val * 100:.2f}%")
     
     # if args.soup == 'greedy':
     #     save_filename = f'Greedy_Soup_ECE_{args.data}.pth'
