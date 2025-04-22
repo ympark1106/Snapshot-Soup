@@ -2,12 +2,13 @@ import matplotlib.pyplot as plt
 
 # tiny-imagenet-200 데이터셋의 정확도와 ECE 값
 methods = [
-    ("Single Network", 83.31, 7.75),
-    ("Uniform", 79.58, 5.61),
-    ("Greedy (ACC)", 83.52, 7.43),
+    ("Single Network", 83.37, 5.63),
+    ("Uniform", 62.90, 17.88),
+    ("Greedy (ACC)", 83.07, 6.29),
     # ("Greedy (ECE)", 76.33, 5.03),
-    ("Branch Soup", 83.77, 4.23),
+    ("Branch Soup", 84.92, 4.48),
 ]
+
 
 # methods = [
 #     ("Single Network", 90.19, 3.50),
@@ -34,7 +35,7 @@ plt.figure(figsize=(7, 6))
 # 각 점 플로팅
 for name, acc, ece in methods:
     label, color, marker = style_map[name]
-    plt.scatter(ece, acc, label=label, color=color, marker=marker, s=100)
+    plt.scatter(ece, acc, label=label, color=color, marker=marker, s=165, zorder=3)
 
 # 축 및 스타일 설정
 plt.xlabel("ECE(↓) (%)", fontsize=16)
@@ -44,10 +45,14 @@ plt.xticks(fontsize=14)
 plt.yticks(fontsize=14)
 plt.grid(True)
 
-plt.legend(loc='lower right', fontsize=13, frameon=True)
+plt.legend(loc='upper right', fontsize=13, frameon=True)
 
-plt.xlim(3.5, 8.5)  # x축: -ECE
-plt.ylim(79, 85)      # y축: Accuracy
+
+plt.xlim(3, 19)  # x축: -ECE
+plt.ylim(62, 86)      # y축: Accuracy
+
+# plt.xlim(3.5, 8.5)  # x축: -ECE
+# plt.ylim(79, 85)      # y축: Accuracy
 
 # plt.xlim(-7, -1)
 # plt.ylim(72, 92)

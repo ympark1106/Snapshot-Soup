@@ -26,6 +26,14 @@ def count_trainable_params(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 
+def seed_for_init(seed=42):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    os.environ["PYTHONHASHSEED"] = str(seed)
+
+
 def set_requires_grad(model, layers_to_train):
     for name, param in model.named_parameters():
         if any(layer in name for layer in layers_to_train):
@@ -34,6 +42,8 @@ def set_requires_grad(model, layers_to_train):
             param.requires_grad = False
             
 def train():
+    seed_for_init(42)
+    
     parser = argparse.ArgumentParser()
     parser.add_argument('--data', '-d', type=str, default='cifar100')
     parser.add_argument('--gpu', '-g', default = '0', type=str)

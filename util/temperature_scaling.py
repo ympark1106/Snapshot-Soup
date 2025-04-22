@@ -1,15 +1,28 @@
 import torch
 from torch import nn, optim
 from torch.nn import functional as F
+from torch.cuda.amp.autocast_mode import autocast
 import matplotlib.pyplot as plt
 
 
 def rein_forward(model, inputs):
     output = model.forward_features(inputs)[:, 0, :]
     output = model.linear(output)
-    # output = torch.softmax(output, dim=1)
-
+    output = torch.softmax(output, dim=1)
     return output
+
+def lora_forward(model, inputs):
+    with autocast(enabled=True):
+        features = model.forward_features(inputs)
+        output = model.linear(features)
+        output = torch.softmax(output, dim=1)
+    return output
+
+def adaptformer_forward(model, inputs):
+    f = model.forward_features(inputs)
+    outputs = model.linear(f)
+    outputs = torch.softmax(outputs, dim=1) 
+    return outputs
 
 class ModelWithTemperature(nn.Module):
     """
@@ -19,7 +32,7 @@ class ModelWithTemperature(nn.Module):
         NB: Output of the neural network should be the classification logits,
             NOT the softmax (or log softmax)!
     """
-    def __init__(self, model, device = 'cuda:5'):
+    def __init__(self, model, device = 'cuda:0'):
         super(ModelWithTemperature, self).__init__()
         self.model = model
         self.temperature = nn.Parameter(torch.ones(1) * 1.0) 
@@ -52,7 +65,7 @@ class ModelWithTemperature(nn.Module):
         return logits / self.temperature
 
     # This function probably should live outside of this class, but whatever
-    def set_temperature(self, valid_loader, cross_validate = 'ece'):
+    def set_temperature(self, valid_loader, cross_validate = 'ece', args = None):
         """
         Tune the tempearature of the model (using the validation set).
         We're going to set it to optimize NLL.
@@ -73,7 +86,12 @@ class ModelWithTemperature(nn.Module):
                     label = torch.argmax(label, dim=1)
                 if label.ndim > 1:
                     label = label.view(-1) 
-                logits = rein_forward(self.model, input)
+                if args.type == 'rein':
+                    logits = rein_forward(self.model, input)
+                elif args.type == 'lora':
+                    logits = lora_forward(self.model, input)
+                elif args.type == 'adaptformer':
+                    logits = adaptformer_forward(self.model, input)
                 # print(logits.shape)                         # 임시 출력
                 logits_list.append(logits.cpu())
                 labels_list.append(label.cpu())
@@ -87,7 +105,7 @@ class ModelWithTemperature(nn.Module):
         print('Before temperature - NLL: %.3f, ECE: %.3f' % (before_temperature_nll, before_temperature_ece))
 
         # Next: optimize the temperature w.r.t. NLL
-        optimizer = optim.LBFGS([self.temperature], lr=0.0001, max_iter=1000)
+        optimizer = optim.LBFGS([self.temperature], lr=0.01, max_iter=100)
 
         def eval():
             optimizer.zero_grad()

@@ -10,6 +10,7 @@ import torch.nn.functional as F
 import argparse
 import time
 from datetime import timedelta
+from torch.autograd import Variable
 import timm
 import numpy as np
 import random
@@ -150,29 +151,32 @@ def train():
     # criterion = torch.nn.CrossEntropyLoss()
     # criterion = focal_loss.FocalLoss(gamma=3) #gamma 커지면 easy sample에 대한 loss 감소
     criterion = focal_loss.FocalLoss(gamma=3)
-    model.eval()
 
-    
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay = 1e-5)
     scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, lr_decay)
     saver = timm.utils.CheckpointSaver(model, optimizer, checkpoint_dir= save_path, max_history = 1) 
 
     # f = open(os.path.join(save_path, 'epoch_acc.txt'), 'w')
+    
+    model.train()
     avg_accuracy = 0.0
     start_time = time.time()
     for epoch in range(max_epoch):
         epoch_start_time = time.time()
         ## training
-        model.train()
+
         total_loss = 0
         total = 0
         correct = 0
         start_time = time.time()
         for batch_idx, (inputs, targets) in enumerate(train_loader):
-            inputs, targets = inputs.to(device), targets.to(device)           
+            model.train()
+            # inputs, targets = inputs.to(device), targets.to(device)  
+            inputs = Variable(inputs).to(device)         
+            targets = Variable(targets).to(device)
             
-            if targets.ndim > 1 and targets.size(1) > 1:
-                targets = torch.argmax(targets, dim=1)
+            # if targets.ndim > 1 and targets.size(1) > 1:
+            #     targets = torch.argmax(targets, dim=1)
             
             optimizer.zero_grad()
             

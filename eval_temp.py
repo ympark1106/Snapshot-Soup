@@ -9,9 +9,9 @@ import torch.nn as nn
 import argparse
 import timm
 import numpy as np
-from utils import read_conf, validation_accuracy, evaluate, validate, calculate_ece, calculate_nll, ece, sce, ace, tace, reliability_diagram
+from util import read_conf, validation_accuracy, evaluate, validate, calculate_ece, calculate_nll, ece, sce, ace, tace, reliability_diagram
 
-from utils.temperature_scaling import ModelWithTemperature
+from util.temperature_scaling import ModelWithTemperature
 
 import random
 import rein
@@ -36,6 +36,18 @@ def rein_forward(model, inputs, temp=1.0, post_temp=False):
     
     return logits
 
+def lora_forward(model, inputs, temp=1.0, post_temp=False):
+    with torch.cuda.amp.autocast(enabled=True):
+        features = model.forward_features(inputs)
+        logits = model.linear(features)
+
+    if post_temp:
+        if not isinstance(temp, torch.Tensor):
+            temp = torch.tensor(temp, device=logits.device)
+        temp = temp.to(logits.device)  # GPU로 이동
+        logits = logits / temp
+
+    return logits
 
 def train():
     parser = argparse.ArgumentParser()
@@ -95,8 +107,8 @@ def train():
     model.load_state_dict(dino_state_dict, strict=False)
     model.to(device)
 
-    state_dict = torch.load(os.path.join(save_path, 'last.pth.tar'), map_location='cpu')['state_dict']
-    # state_dict = torch.load(os.path.join(save_path, 'cyclic_checkpoint_epoch369.pth'), map_location=device)
+    # state_dict = torch.load(os.path.join(save_path, 'last.pth.tar'), map_location='cpu')['state_dict']
+    state_dict = torch.load(os.path.join(save_path, 'cyclic_checkpoint_epoch129.pth'), map_location=device)
 
     # state_dict = torch.load(os.path.join(save_path, f'Uniform_Soup_{args.data}.pth'), map_location=device)
     # state_dict = torch.load(os.path.join(save_path, f'Greedy_Soup_ACC_{args.data}.pth'), map_location=device)
@@ -106,7 +118,7 @@ def train():
             
     model_temp = ModelWithTemperature(model)
     # print(model_temp)
-    model_temp.set_temperature(valid_loader, cross_validate='ece')
+    model_temp.set_temperature(valid_loader, cross_validate='ece', args=args)
     temp = model_temp.get_temperature()
     print(f"Optimal Temperature: {temp}")
     
