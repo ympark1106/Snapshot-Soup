@@ -392,6 +392,18 @@ def train():
     model.eval()
     model.to(device)
     
+    
+    save_dir = os.path.join(config['save_path'], 'branch_soup')
+    os.makedirs(save_dir, exist_ok=True)
+    
+    ckpt_name = f'{args.type}_branch_soup.pth'
+    save_path = os.path.join(save_dir, ckpt_name)
+
+    # (3) state_dict 저장 (파라미터만)  —  파일 크기가 가장 작음
+    # torch.save(greedy_soup_params, save_path)
+    torch.save(model.state_dict(), save_path)
+    print(f"\nBranch Soup parameter saved to '{save_path}'")
+
 
     ## validation 
     if args.type == 'lora':

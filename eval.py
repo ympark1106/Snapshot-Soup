@@ -174,7 +174,8 @@ def train():
     # print(model)
 
     # state_dict = torch.load(os.path.join(save_path, 'last.pth.tar'), map_location=device)['state_dict']
-    state_dict = torch.load(os.path.join(save_path, 'cyclic_checkpoint_epoch189.pth'), map_location=device)
+    # state_dict = torch.load(os.path.join(save_path, f'{args.type}branch_soup.pth'), map_location=device)
+    state_dict = torch.load(os.path.join(save_path, f'cyclic_checkpoint_epoch19.pth'), map_location=device)
     # state_dict = torch.load(os.path.join(save_path, 'checkpoint_epoch_70.pth'), map_location='cpu')
     
     # state_dict = torch.load(os.path.join(save_path, f'Uniform_Soup_{args.data}.pth'), map_location=device)
