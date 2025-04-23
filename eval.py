@@ -70,18 +70,10 @@ def train():
         os.mkdir(save_path)
 
 
-    if args.data == 'cifar10':
-        test_loader = cifar10.get_test_loader(batch_size, shuffle=True, num_workers=4, pin_memory=True, data_dir=data_path)
-    elif args.data == 'cifar100':
+    if args.data == 'cifar100':
         test_loader = cifar100.get_test_loader(data_dir=data_path, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True)
     elif args.data == 'ham10000':
         train_loader, valid_loader, test_loader = ham10000.get_dataloaders(data_path, batch_size=batch_size, num_workers=4)
-    # elif args.data == 'bloodmnist':
-    #     train_loader, test_loader, valid_loader = bloodmnist.get_dataloader(batch_size, download=True, num_workers=4)
-    # elif args.data == 'pathmnist':
-    #     train_loader, test_loader, valid_loader = pathmnist.get_dataloader(batch_size, download=True, num_workers=4)
-    # elif args.data == 'retinamnist':
-    #     train_loader, test_loader, valid_loader = retinamnist.get_dataloader(batch_size, download=True, num_workers=4)
     elif args.data == 'eyepacs':
         train_loader, valid_loader, test_loader = eyepacs.get_dataloaders(data_path, batch_size=batch_size, pin_memory=True,num_workers=16)
     elif args.data == 'tinyimagenet':

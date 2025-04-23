@@ -52,19 +52,19 @@ def validate(model, valid_loader, device, args):
     with torch.no_grad():
         for inputs, target in valid_loader:
             inputs, target = inputs.to(device), target.to(device)
-            if args.type == 'linear':
-                output = model(inputs)
-                output = torch.softmax(output, dim=1)
-            if args.type == 'rein':
+            # if args.adapter == 'linear':
+            #     output = model(inputs)
+                # output = torch.softmax(output, dim=1)
+            if args.adapter == 'rein':
                 output = rein_forward(model, inputs)
                 # print(output.shape)  
-            elif args.type == 'lora':
+            elif args.adapter == 'lora':
                 with autocast(enabled=True):
                     output = lora_forward(model, inputs)
-            elif args.type == 'adaptformer':
+            elif args.adapter == 'adaptformer':
                 output = adaptformer_forward(model, inputs)
-            elif args.type == 'resnet':
-                output = resnet_forward(model, inputs)
+            # elif args.adapter == 'resnet':
+            #     output = resnet_forward(model, inputs)
 
             
             # Append results

@@ -47,15 +47,15 @@ def initialize_model(variant, config, device, args):
     dino_state_dict = dino.state_dict()
     
     
-    if args.type == 'linear':
+    if args.adapter == 'linear':
         model = dino
         model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
         
-    elif args.type == 'rein':
+    elif args.adapter == 'rein':
         model = rein.ReinsDinoVisionTransformer(**variant)
         model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
         
-    elif args.type == 'lora':
+    elif args.adapter == 'lora':
         new_state_dict = dict()
         for k in dino_state_dict.keys():
             new_k = k.replace("attn.qkv", "attn.qkv.qkv")
@@ -66,8 +66,7 @@ def initialize_model(variant, config, device, args):
         model.to(device)
         # model.to(device)  
         
-        
-    elif args.type == 'adaptformer':
+    elif args.adapter == 'adaptformer':
         tuning_config = argparse.Namespace()
         # Adaptformer
         tuning_config.ffn_adapt = True
@@ -125,17 +124,17 @@ def get_model_from_sd(state_dict, variant, config, device, args):
     dino = torch.hub.load('facebookresearch/dinov2', model_load)
     dino_state_dict = dino.state_dict()
     
-    if args.type == 'linear':
+    if args.adapter == 'linear':
         model = dino
         model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
         model.load_state_dict(state_dict, strict=True)
         
-    elif args.type == 'rein':
+    elif args.adapter == 'rein':
         model = rein.ReinsDinoVisionTransformer(**variant)
         model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
         model.load_state_dict(state_dict, strict=True)
         
-    elif args.type == 'lora':
+    elif args.adapter == 'lora':
         model_load = dino_variant._small_dino
         dino = torch.hub.load('facebookresearch/dinov2', model_load)
         dino_state_dict = dino.state_dict()
@@ -147,7 +146,7 @@ def get_model_from_sd(state_dict, variant, config, device, args):
         model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
         model.load_state_dict(state_dict, strict=True)
         
-    elif args.type == 'adaptformer':
+    elif args.adapter == 'adaptformer':
          # model_load = dino_variant._small_dino
          # dino = torch.hub.load('facebookresearch/dinov2', model_load)
          # dino_state_dict = dino.state_dict()
@@ -173,6 +172,26 @@ def get_model_from_sd(state_dict, variant, config, device, args):
 
     return model
 
+def uniform_soup(models, model_names, device, variant, config, args):
+    print("Creating uniform soup from models (no evaluation).")
+    
+    num_models = len(models)
+
+    # 첫 번째 모델에서 시작
+    for i, model in enumerate(models):
+        state_dict = model.state_dict()
+        if i == 0:
+            uniform_soup_params = {k: v.clone() * (1. / num_models) for k, v in state_dict.items()}
+        else:
+            for k in uniform_soup_params:
+                uniform_soup_params[k] += state_dict[k].clone() * (1. / num_models)
+
+        print(f"Added model {model_names[i]} to uniform soup ({i+1}/{num_models}).")
+
+    final_model = get_model_from_sd(uniform_soup_params, variant, config, device, args)
+
+    return uniform_soup_params, final_model
+
 # Greedy soup model ensembling
 def greedy_soup_ece(models, model_names, valid_loader, device, variant, config, args):
     # Calculate ECE for each model and sort them by ECE in ascending order (lower ECE is better)
@@ -187,7 +206,7 @@ def greedy_soup_ece(models, model_names, valid_loader, device, variant, config, 
         print(f'Model: {name}, ECE: {ece}')
 
     best_ece = sorted_models[0][1]
-    greedy_soup_params = sorted_models[0][0].state_dict()
+    soup_params = sorted_models[0][0].state_dict()
     greedy_soup_ingredients = [sorted_models[0][0]]
     
     TOLERANCE = (sorted_models[-1][1] - sorted_models[0][1]) / 2
@@ -200,13 +219,13 @@ def greedy_soup_ece(models, model_names, valid_loader, device, variant, config, 
         print(f'Adding ingredient {i+1} ({sorted_models[i][2]}) to the greedy soup. Num ingredients: {num_ingredients}')
         
         # Calculate potential new parameters with the new ingredient
-        potential_greedy_soup_params = {
-            k: greedy_soup_params[k].clone() * (num_ingredients / (num_ingredients + 1)) + 
+        potential_soup_params = {
+            k: soup_params[k].clone() * (num_ingredients / (num_ingredients + 1)) + 
                new_ingredient_params[k].clone() * (1. / (num_ingredients + 1))
             for k in new_ingredient_params
         }
 
-        temp_model = get_model_from_sd(potential_greedy_soup_params, variant, config, device, args)
+        temp_model = get_model_from_sd(potential_soup_params, variant, config, device, args)
         temp_model.eval()
         temp_model.to(device)
         
@@ -215,16 +234,16 @@ def greedy_soup_ece(models, model_names, valid_loader, device, variant, config, 
         with torch.no_grad():
             for inputs, target in valid_loader:
                 inputs, target = inputs.to(device), target.to(device)
-                if args.type == 'linear':  
+                if args.adapter == 'linear':  
                     output = temp_model(inputs)
                     output = torch.softmax(output, dim=1)
-                elif args.type == 'rein':
+                elif args.adapter == 'rein':
                     output = rein_forward(temp_model, inputs)
                     # print(output.shape)  
-                elif args.type == 'lora':
+                elif args.adapter == 'lora':
                     with autocast(enabled=True):
                         output = lora_forward(temp_model, inputs)
-                elif args.type == 'adaptformer':
+                elif args.adapter == 'adaptformer':
                     output = adaptformer_forward(temp_model, inputs)
         
                 outputs.append(output.cpu())
@@ -239,22 +258,22 @@ def greedy_soup_ece(models, model_names, valid_loader, device, variant, config, 
         if held_out_val_ece < best_ece + TOLERANCE:
             best_ece = held_out_val_ece
             greedy_soup_ingredients.append(sorted_models[i][0])
-            greedy_soup_params = potential_greedy_soup_params
+            soup_params = potential_soup_params
             print(f'<Added new ingredient to soup. Total ingredients: {len(greedy_soup_ingredients)}>\n')
         else:
             print(f'<No improvement. Reverting to best-known parameters.>\n')
 
 
-    final_model = get_model_from_sd(greedy_soup_params, variant, config, device, args)
+    final_model = get_model_from_sd(soup_params, variant, config, device, args)
         
-    return greedy_soup_params, final_model
+    return soup_params, final_model
 
 
 def greedy_soup_acc(models, model_names, valid_loader, device, variant, config, args):
     # Evaluate and sort models by validation accuracy
-    if args.type == 'rein' or args.type == 'adaptformer':
-        model_accuracies = [(model, validation_accuracy(model, valid_loader, device, mode=args.type), name) for model, name in zip(models, model_names)]
-    elif args.type == 'lora':
+    if args.adapter == 'rein' or args.adapter == 'adaptformer':
+        model_accuracies = [(model, validation_accuracy(model, valid_loader, device, mode=args.adapter), name) for model, name in zip(models, model_names)]
+    elif args.adapter == 'lora':
         model_accuracies = [(model, validation_accuracy_lora(model, valid_loader, device), name) for model, name in zip(models, model_names)]
 
     
@@ -269,13 +288,13 @@ def greedy_soup_acc(models, model_names, valid_loader, device, variant, config, 
     
     # Initialize greedy soup with the highest-performing model
     max_accuracy = sorted_models[0][1]
-    greedy_soup_params = sorted_models[0][0].state_dict()  # Best model's initial parameters
+    soup_params = sorted_models[0][0].state_dict()  # Best model's initial parameters
     greedy_soup_ingredients = [sorted_models[0][0]] 
 
     for i in range(1, len(sorted_models)):
         print(f'Testing model {i+1} ({sorted_models[i][2]}) of {len(sorted_models)}')
         
-        # previous_greedy_soup_params = {k: v.clone() for k, v in greedy_soup_params.items()}
+        # previous_soup_params = {k: v.clone() for k, v in soup_params.items()}
         
         # New model parameters to test as an additional ingredient
         new_ingredient_params = sorted_models[i][0].state_dict()
@@ -283,23 +302,23 @@ def greedy_soup_acc(models, model_names, valid_loader, device, variant, config, 
         print(f'Adding ingredient {i+1} ({sorted_models[i][2]}) to the greedy soup. Num ingredients: {num_ingredients}')    
     
         # Create potential new soup parameters by averaging with the new ingredient
-        potential_greedy_soup_params = {
-            k: greedy_soup_params[k].clone() * (num_ingredients / (num_ingredients + 1)) +
+        potential_soup_params = {
+            k: soup_params[k].clone() * (num_ingredients / (num_ingredients + 1)) +
                new_ingredient_params[k].clone() * (1. / (num_ingredients + 1))
             for k in new_ingredient_params
         }
         
         # Load the new potential parameters into the base model for evaluation
-        temp_model = get_model_from_sd(potential_greedy_soup_params, variant, config, device, args)
+        temp_model = get_model_from_sd(potential_soup_params, variant, config, device, args)
         temp_model.eval()
         
         # Calculate validation accuracy with the potential new soup parameters
-        if args.type == 'linear' or args.type == 'rein' or args.type == 'adaptformer':
-            held_out_val_accuracy = validation_accuracy(temp_model, valid_loader, device, mode=args.type)
-        elif args.type == 'lora':
+        if args.adapter == 'linear' or args.adapter == 'rein' or args.adapter == 'adaptformer':
+            held_out_val_accuracy = validation_accuracy(temp_model, valid_loader, device, mode=args.adapter)
+        elif args.adapter == 'lora':
             held_out_val_accuracy = validation_accuracy_lora(temp_model, valid_loader, device)
-        elif args.type == 'adaptformer':
-            held_out_val_accuracy = validation_accuracy(temp_model, valid_loader, device, mode=args.type)
+        elif args.adapter == 'adaptformer':
+            held_out_val_accuracy = validation_accuracy(temp_model, valid_loader, device, mode=args.adapter)
 
         
         print(f'Held-out validation accuracy: {held_out_val_accuracy}, best accuracy so far: {max_accuracy}.\n')
@@ -308,15 +327,15 @@ def greedy_soup_acc(models, model_names, valid_loader, device, variant, config, 
         if held_out_val_accuracy > max_accuracy:
             greedy_soup_ingredients.append(sorted_models[i][0])
             max_accuracy = held_out_val_accuracy
-            greedy_soup_params = potential_greedy_soup_params  # Save the improved parameters
+            soup_params = potential_soup_params  # Save the improved parameters
             print(f'[New greedy soup ingredient added. Number of ingredients: {len(greedy_soup_ingredients)}]\n')
         else:
             print(f'[No improvement. Reverting to best-known parameters.]\n')
          
-        final_model = get_model_from_sd(greedy_soup_params, variant, config, device, args)
+        final_model = get_model_from_sd(soup_params, variant, config, device, args)
         
 
-    return greedy_soup_params, final_model
+    return soup_params, final_model
 
 
 def train():
@@ -324,9 +343,10 @@ def train():
     parser.add_argument('--data', '-d', type=str, default='eyepacs')
     parser.add_argument('--gpu', '-g', default='0', type=str)
     parser.add_argument('--netsize', default='s', type=str)
-    parser.add_argument('--type', '-t', default='rein', type=str)
+    parser.add_argument('--adapter', '-a', default='rein', type=str)
     parser.add_argument('--checkpoint', '-c', type=str, default='reins_hydra_10')
     parser.add_argument('--soup', '-s', type=str, default='ece')
+    parser.add_argument('--savename', '-n', type=str, default='branch_soup')
     args = parser.parse_args()
 
     config = read_conf(os.path.join('conf', 'data', f'{args.data}.yaml'))
@@ -358,7 +378,7 @@ def train():
 
     
     for save_path in save_paths:
-        if args.type == 'adaptformer':
+        if args.adapter == 'adaptformer':
             model = initialize_model(variant, config, device, args)
             state_dict= torch.load(save_path, map_location='cpu')
             model.load_state_dict(state_dict, strict=False)
@@ -382,34 +402,34 @@ def train():
     
     if args.soup == 'acc':
         print('Greedy soup by ACC')
-        greedy_soup_params, model = greedy_soup_acc(models, model_names, valid_loader, device, variant, config, args)
+        soup_params, model = greedy_soup_acc(models, model_names, valid_loader, device, variant, config, args)
     elif args.soup == 'ece':
         print('Greedy soup by ECE')
-        greedy_soup_params, model = greedy_soup_ece(models, model_names, valid_loader, device, variant, config, args)
+        soup_params, model = greedy_soup_ece(models, model_names, valid_loader, device, variant, config, args)
+    elif args.soup == 'uniform':
+        print('Uniform soup')
+        soup_params, model = uniform_soup(models, model_names, device, variant, config, args)
     
 
-    model = get_model_from_sd(greedy_soup_params, variant, config, device, args)
+    model = get_model_from_sd(soup_params, variant, config, device, args)
     model.eval()
     model.to(device)
-    
     
     save_dir = os.path.join(config['save_path'], 'branch_soup')
     os.makedirs(save_dir, exist_ok=True)
     
-    ckpt_name = f'{args.type}_branch_soup.pth'
+    ckpt_name = args.savename + '.pth'
     save_path = os.path.join(save_dir, ckpt_name)
 
-    # (3) state_dict 저장 (파라미터만)  —  파일 크기가 가장 작음
-    # torch.save(greedy_soup_params, save_path)
     torch.save(model.state_dict(), save_path)
     print(f"\nBranch Soup parameter saved to '{save_path}'")
 
 
     ## validation 
-    if args.type == 'lora':
+    if args.adapter == 'lora':
         test_accuracy = validation_accuracy_lora(model, test_loader, device)
     else:
-        test_accuracy = validation_accuracy(model, test_loader, device, mode=args.type)
+        test_accuracy = validation_accuracy(model, test_loader, device, mode=args.adapter)
     print("\n🔹 Model Accuracy 🔹")
     print('Test Acc:', test_accuracy)
 
@@ -417,20 +437,20 @@ def train():
     with torch.no_grad():
         for inputs, target in test_loader:
             inputs, target = inputs.to(device), target.to(device)
-            if args.type == 'linear':
+            if args.adapter == 'linear':
                 output = model(inputs)
                 output = model.linear(output)
                 output = torch.softmax(output, dim=1)
-            elif args.type == 'rein':
+            elif args.adapter == 'rein':
                 output = rein_forward(model, inputs)
                 # print(output.shape)  
-            elif args.type == 'lora':
+            elif args.adapter == 'lora':
                 with autocast(enabled=True):
                     features = model.forward_features(inputs)
                     output = model.linear(features)
                     output = torch.softmax(output, dim=1)
                     # print(output.shape)
-            elif args.type == 'adaptformer':
+            elif args.adapter == 'adaptformer':
                 output = adaptformer_forward(model, inputs)
 
             outputs.append(output.cpu())
