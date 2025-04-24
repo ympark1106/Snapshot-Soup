@@ -1,5 +1,5 @@
 # from .dino_v2 import DinoVisionTransformer
-from .reins_dinov2 import ReinsDinoVisionTransformer, ReinsDinoVisionTransformer_3_head
+from .reins_dinov2 import ReinsDinoVisionTransformer
 from .reins_resnet import ReinsResNet
 from .reins_dinov2_dropout import ReinsDinoVisionTransformer_Dropout
 from .lora_dinov2 import LoRADinoVisionTransformer

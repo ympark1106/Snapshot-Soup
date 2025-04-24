@@ -48,10 +48,12 @@ class ValTinyImageNetDataset(Dataset):
             image = self.transform(image.type(torch.FloatTensor))
         return image, label
 
-def get_dataloaders(data_root, batch_size=128, num_workers=8, pin_memory=True, val_split=0.1):
+def get_dataloaders(data_root, batch_size=128, num_workers=8, pin_memory=True, val_split=0.1, random_seed=None):
     # Train/val 분할은 항상 고정(seed=42)
-    np.random.seed(42)
-
+    if random_seed is None:
+        random_seed = int(time.time()) % (2**32)
+    print(f"Using random seed: {random_seed}")  # 확인용 출력
+    
     id_dict = {}
     with open(os.path.join(data_root, 'wnids.txt'), 'r') as f:
         for i, line in enumerate(f):

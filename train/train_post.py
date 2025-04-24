@@ -172,7 +172,8 @@ def train():
     
     cycle_length = 20        
     
-    checkpoint_path = os.path.join(checkpoint_path, f'{args.adapter}_branch_soup.pth')   
+    # checkpoint_path = os.path.join(checkpoint_path, f'{args.adapter}_branch_soup.pth')   
+    checkpoint_path = os.path.join(checkpoint_path, 'last.pth.tar')
     cyclic_scheduler = None  
  
     saver = timm.utils.CheckpointSaver(model, optimizer, checkpoint_dir= save_path, max_history = 1) 

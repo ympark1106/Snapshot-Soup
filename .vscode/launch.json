@@ -13,8 +13,10 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "args": [
-                "${command:pickArgs}"
-                
+                "--data", "ham10000",
+                "--gpu", "5",
+                "--adapter", "lora",
+                "--save_path", "branch_soup"
             ]
         }
     ]
