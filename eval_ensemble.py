@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 import argparse
 import numpy as np
+import glob
 
 import torch.nn.functional as F
 from torch.cuda.amp.autocast_mode import autocast
@@ -219,52 +220,57 @@ def train():
     parser.add_argument('--gpu', '-g', default='0', type=str)
     parser.add_argument('--netsize', default='s', type=str)
     parser.add_argument('--type', '-t', default='rein', type=str)
+    parser.add_argument('--checkpoint', '-c', type=str, default='')
     args = parser.parse_args()
 
     config = read_conf(os.path.join('conf', 'data', f'{args.data}.yaml'))
     device = torch.device(f'cuda:{args.gpu}' if torch.cuda.is_available() else 'cpu')
     data_path = config['data_root']
     batch_size = int(config['batch_size'])
+    checkpoint = args.checkpoint
     
-    if args.type == 'rein':
-        save_paths = [
-            os.path.join(config['save_path'], 'reins_focal_1'),
-            os.path.join(config['save_path'], 'reins_focal_2'),
-            os.path.join(config['save_path'], 'reins_focal_3'),
-            os.path.join(config['save_path'], 'reins_focal_4'),
-            os.path.join(config['save_path'], 'reins_focal_5'),
-            os.path.join(config['save_path'], 'reins_focal_6'),
-            os.path.join(config['save_path'], 'reins_focal_7'),
-            os.path.join(config['save_path'], 'reins_focal_8'),
-            os.path.join(config['save_path'], 'reins_focal_9'),
-            os.path.join(config['save_path'], 'reins_focal_10')
-        ]
-    elif args.type == 'lora':
-        save_paths = [
-            os.path.join(config['save_path'], 'lora_focal_1'),
-            os.path.join(config['save_path'], 'lora_focal_2'),
-            os.path.join(config['save_path'], 'lora_focal_3'),
-            os.path.join(config['save_path'], 'lora_focal_4'),
-            os.path.join(config['save_path'], 'lora_focal_5'),
-            os.path.join(config['save_path'], 'lora_focal_6'),
-            os.path.join(config['save_path'], 'lora_focal_7'),
-            os.path.join(config['save_path'], 'lora_focal_8'),
-            os.path.join(config['save_path'], 'lora_focal_9'),
-            os.path.join(config['save_path'], 'lora_focal_10'),
-        ]
-    elif args.type == 'adaptformer':
-        save_paths = [
-            os.path.join(config['save_path'], 'af_focal_1'),
-            os.path.join(config['save_path'], 'af_focal_2'),
-            os.path.join(config['save_path'], 'af_focal_3'),
-            os.path.join(config['save_path'], 'af_focal_4'),
-            os.path.join(config['save_path'], 'af_focal_5'),
-            os.path.join(config['save_path'], 'af_focal_6'),
-            os.path.join(config['save_path'], 'af_focal_7'),
-            os.path.join(config['save_path'], 'af_focal_8'),
-            os.path.join(config['save_path'], 'af_focal_9'),
-            os.path.join(config['save_path'], 'af_focal_10'),
-        ]
+    checkpoint_dir = os.path.join(config['save_path'], checkpoint)
+    save_paths = sorted(glob.glob(os.path.join(checkpoint_dir, "cyclic_checkpoint_epoch*.pth")))
+    
+    # if args.type == 'rein':
+    #     save_paths = [
+    #         os.path.join(config['save_path'], 'reins_focal_1'),
+    #         os.path.join(config['save_path'], 'reins_focal_2'),
+    #         os.path.join(config['save_path'], 'reins_focal_3'),
+    #         os.path.join(config['save_path'], 'reins_focal_4'),
+    #         os.path.join(config['save_path'], 'reins_focal_5'),
+    #         os.path.join(config['save_path'], 'reins_focal_6'),
+    #         os.path.join(config['save_path'], 'reins_focal_7'),
+    #         os.path.join(config['save_path'], 'reins_focal_8'),
+    #         os.path.join(config['save_path'], 'reins_focal_9'),
+    #         os.path.join(config['save_path'], 'reins_focal_10')
+    #     ]
+    # elif args.type == 'lora':
+    #     save_paths = [
+    #         os.path.join(config['save_path'], 'lora_focal_1'),
+    #         os.path.join(config['save_path'], 'lora_focal_2'),
+    #         os.path.join(config['save_path'], 'lora_focal_3'),
+    #         os.path.join(config['save_path'], 'lora_focal_4'),
+    #         os.path.join(config['save_path'], 'lora_focal_5'),
+    #         os.path.join(config['save_path'], 'lora_focal_6'),
+    #         os.path.join(config['save_path'], 'lora_focal_7'),
+    #         os.path.join(config['save_path'], 'lora_focal_8'),
+    #         os.path.join(config['save_path'], 'lora_focal_9'),
+    #         os.path.join(config['save_path'], 'lora_focal_10'),
+    #     ]
+    # elif args.type == 'adaptformer':
+    #     save_paths = [
+    #         os.path.join(config['save_path'], 'af_focal_1'),
+    #         os.path.join(config['save_path'], 'af_focal_2'),
+    #         os.path.join(config['save_path'], 'af_focal_3'),
+    #         os.path.join(config['save_path'], 'af_focal_4'),
+    #         os.path.join(config['save_path'], 'af_focal_5'),
+    #         os.path.join(config['save_path'], 'af_focal_6'),
+    #         os.path.join(config['save_path'], 'af_focal_7'),
+    #         os.path.join(config['save_path'], 'af_focal_8'),
+    #         os.path.join(config['save_path'], 'af_focal_9'),
+    #         os.path.join(config['save_path'], 'af_focal_10'),
+    #     ]
     
     
     model_names = [os.path.basename(path) for path in save_paths]
@@ -275,7 +281,8 @@ def train():
     
     for save_path in save_paths:
         model = initialize_model(variant, config, device, args)
-        state_dict = torch.load(os.path.join(save_path, 'last.pth.tar'), map_location='cpu')['state_dict']
+        # state_dict = torch.load(os.path.join(save_path, 'last.pth.tar'), map_location='cpu')['state_dict']
+        state_dict = torch.load((save_path), map_location=device)
         model.load_state_dict(state_dict, strict=False)
         model.to(device)
         model.eval()

@@ -53,21 +53,21 @@ def train():
     parser.add_argument('--data', '-d', type=str, default='cifar100')
     parser.add_argument('--gpu', '-g', default = '0', type=str)
     parser.add_argument('--net', '-n', default='dinov2', type=str)
-    parser.add_argument('--save_path', '-s', type=str)
-    parser.add_argument('--type', '-t', default= 'rein', type=str)
+    parser.add_argument('--checkpoint', '-c', type=str)
+    parser.add_argument('--adapter', '-t', default= 'rein', type=str)
     args = parser.parse_args()
 
     config = read_conf('conf/data/'+args.data+'.yaml')
 
     device = 'cuda:'+args.gpu
-    save_path = os.path.join(config['save_path'], args.save_path)
+    checkpoint_path = os.path.join(config['save_path'], args.checkpoint)
     data_path = config['data_root']
     batch_size = int(config['batch_size'])
     # batch_size = 32
     # num_workers = int(config['num_workers'])
 
-    if not os.path.exists(save_path):
-        os.mkdir(save_path)
+    if not os.path.exists(checkpoint_path):
+        os.mkdir(checkpoint_path)
 
 
     if args.data == 'cifar100':
@@ -99,19 +99,19 @@ def train():
             new_state_dict[new_k] = dino_state_dict[k]
 
 
-    if args.type == 'linear':
+    if args.adapter == 'linear':
         model = torch.hub.load('facebookresearch/dinov2', model_load)
         model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
         model.load_state_dict(dino_state_dict, strict=False)
         model.to(device)
-    elif args.type == 'rein':
+    elif args.adapter == 'rein':
         model = rein.ReinsDinoVisionTransformer(
             **variant
         )
         model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
         model.load_state_dict(dino_state_dict, strict=False)
         model.to(device)
-    # elif args.type == 'rein_dropout':
+    # elif args.adapter == 'rein_dropout':
     #     model = rein.ReinsDinoVisionTransformer_Dropout(
     #         **variant,
     #         dropout_rate=0.5
@@ -119,7 +119,7 @@ def train():
     #     model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
     #     model.load_state_dict(dino_state_dict, strict=False)
     #     model.to(device)
-    elif args.type == 'lora':
+    elif args.adapter == 'lora':
         new_state_dict = dict()
         for k in dino_state_dict.keys():
             new_k = k.replace("attn.qkv", "attn.qkv.qkv")
@@ -128,7 +128,7 @@ def train():
         model.dino.load_state_dict(new_state_dict, strict=False)
         model.linear = nn.Linear(variant['embed_dim'], config['num_classes'])
         model.to(device)
-    elif args.type == 'adaptformer':
+    elif args.adapter == 'adaptformer':
         tuning_config = argparse.Namespace()
         # Adaptformer
         tuning_config.ffn_adapt = True
@@ -165,18 +165,18 @@ def train():
 
     # print(model)
 
-    # state_dict = torch.load(os.path.join(save_path, 'last.pth.tar'), map_location=device)['state_dict']
-    # state_dict = torch.load(os.path.join(save_path, f'{args.type}_branch_soup.pth'), map_location=device)
-    state_dict = torch.load(os.path.join(save_path, f'cyclic_checkpoint_epoch19.pth'), map_location=device)
-    # state_dict = torch.load(os.path.join(save_path, 'checkpoint_epoch_70.pth'), map_location='cpu')
+    # state_dict = torch.load(os.path.join(checkpoint_path, 'last.pth.tar'), map_location=device)['state_dict']
+    # state_dict = torch.load(os.path.join(checkpoint_path, f'{args.adapter}_branch_soup.pth'), map_location=device)
+    state_dict = torch.load(os.path.join(checkpoint_path, f'cyclic_checkpoint_epoch19.pth'), map_location=device)
+    # state_dict = torch.load(os.path.join(checkpoint_path, 'checkpoint_epoch_70.pth'), map_location='cpu')
     
-    # state_dict = torch.load(os.path.join(save_path, f'Uniform_Soup_{args.data}.pth'), map_location=device)
-    # state_dict = torch.load(os.path.join(save_path, f'Greedy_Soup_ACC_{args.data}.pth'), map_location=device)
-    # state_dict = torch.load(os.path.join(save_path, f'Greedy_Soup_ECE_{args.data}.pth'), map_location=device)
+    # state_dict = torch.load(os.path.join(checkpoint_path, f'Uniform_Soup_{args.data}.pth'), map_location=device)
+    # state_dict = torch.load(os.path.join(checkpoint_path, f'Greedy_Soup_ACC_{args.data}.pth'), map_location=device)
+    # state_dict = torch.load(os.path.join(checkpoint_path, f'Greedy_Soup_ECE_{args.data}.pth'), map_location=device)
     
     model.load_state_dict(state_dict, strict=False)
     
-    if args.type == 'rein_dropout':
+    if args.adapter == 'rein_dropout':
         model.train() # MC Dropout
     else:
         model.eval()        
@@ -184,10 +184,10 @@ def train():
     # print(model)
 
     ## validation 
-    if args.type == 'lora':
+    if args.adapter == 'lora':
         test_accuracy = validation_accuracy_lora(model, test_loader, device)
     else:
-        test_accuracy = validation_accuracy(model, test_loader, device, mode=args.type)
+        test_accuracy = validation_accuracy(model, test_loader, device, mode=args.adapter)
     print("\n🔹 Model Accuracy 🔹")
     print('test acc:', test_accuracy)
 
@@ -197,20 +197,20 @@ def train():
         for batch_idx, (inputs, target) in enumerate(test_loader):
             # print(f"Batch {batch_idx} targets:", target)
             inputs, target = inputs.to(device), target.to(device)
-            if args.type == 'linear':
+            if args.adapter == 'linear':
                 output = model(inputs)
                 output = model.linear(output)
                 output = torch.softmax(output, dim=1)
-            elif args.type == 'rein':
+            elif args.adapter == 'rein':
                 output = rein_forward(model, inputs)
                 # print(output.shape)
-            elif args.type == 'resnet':
+            elif args.adapter == 'resnet':
                 output = resnet_forward(model, inputs)
-            elif args.type == 'lora':
+            elif args.adapter == 'lora':
                 with autocast(enabled=True):
                     output = lora_forward(model, inputs)
                     # print(output.shape)
-            elif args.type == 'adaptformer':
+            elif args.adapter == 'adaptformer':
                 output = adaptformer_forward(model, inputs)
                 # print(output.shape)
                 
@@ -220,32 +220,7 @@ def train():
     targets = torch.cat(targets).numpy()
     targets = targets.astype(int)
     evaluate(outputs, targets, verbose=True)
-    
-    
-    # print("\n🔹 Calibration Metrics 🔹")
 
-    ece_val = ece(targets, outputs, num_bins=15)
-    sce_val = sce(targets, outputs, num_bins=15)
-    ace_val = ace(targets, outputs, num_bins=15)
-    tace_val = tace(targets, outputs, num_bins=15, threshold=0.01)
-    
-    print("\n🔹 Calibration Metrics (GCE 기반) 🔹")
-    print(f"ECE  (Expected Calibration Error):           {ece_val * 100:.2f}%")
-    print(f"SCE  (Static Calibration Error):             {sce_val * 100:.2f}%")
-    print(f"ACE  (Adaptive Calibration Error):           {ace_val * 100:.2f}%")
-    print(f"TACE (Thresholded Adaptive Calibration):     {tace_val * 100:.2f}%")
-
-    # reliability_diagram(outputs, targets, num_bins=15, title="ECE based", save_path="reliability_ece.png")
-
-    # Failure Prediction Metrics 계산
-    # aurc = compute_aurc(outputs, targets)
-    # auroc = compute_auroc(outputs, targets)
-    # fpr95 = compute_fpr95(outputs, targets)
-    
-    # print("\n🔹 Failure Prediction Metrics 🔹")
-    # print(f"AURC (Area Under Risk-Coverage Curve): {aurc:.4f}")
-    # print(f"AUROC (Area Under ROC Curve): {auroc:.4f}")
-    # print(f"FPR@95TPR (False Positive Rate at 95% True Positive Rate): {fpr95:.4f}")
 
 
 

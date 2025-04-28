@@ -24,7 +24,7 @@ import adaptformer
 
 import dino_variant
 from sklearn.metrics import f1_score
-from data import dataloader
+from data import dataloader, cifar100, ham10000, tinyimagenet, eyepacs
 from losses import RankMixup_MNDCG, RankMixup_MRL, focal_loss, focal_loss_adaptive_gamma
 
 def rein_forward(model, inputs):
@@ -192,20 +192,27 @@ def train():
         if epoch == cyclic_start_epoch - 1:
             print(f"Saving checkpoint after epoch {epoch}")
             torch.save(model.state_dict(), checkpoint_path)
-        # 싸이클마다 70번째 에포크 상태로 되돌아감
+
         if epoch >= cyclic_start_epoch and (epoch - cyclic_start_epoch) % cycle_length == 0:
             print(f"\nRestoring model to checkpoint from epoch {cyclic_start_epoch}")
+            if epoch % cycle_length == 0:
+                seed = epoch // cycle_length
+                print(f"\nSetting random seed to {seed}")   
+            
+                if args.data == 'cifar100':
+                    test_loader = cifar100.get_test_loader(data_dir=data_path, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True)
+                    train_loader, valid_loader = cifar100.get_train_valid_loader(data_dir=data_path, augment=True, batch_size=batch_size, valid_size=0.1, random_seed=seed, shuffle=True, num_workers=4, pin_memory=True)
+                elif args.data == 'ham10000':
+                    train_loader, valid_loader, test_loader = ham10000.get_dataloaders(data_path, batch_size=batch_size, num_workers=4, random_seed=seed)
+                elif args.data == 'eyepacs':
+                    train_loader, valid_loader, test_loader = eyepacs.get_dataloaders(data_path, batch_size=batch_size, pin_memory=True, num_workers=16, random_seed=seed)
+                elif args.data == 'tinyimagenet':
+                    train_loader, valid_loader, test_loader = tinyimagenet.get_dataloaders(data_path, batch_size=batch_size, num_workers=4, pin_memory=True, val_split=0.1, random_seed=seed)
             
             for param_group in optimizer.param_groups:
                 param_group['lr'] = 1e-3
             
             checkpoint = torch.load(checkpoint_path, map_location=device)
-
-            # DataParallel 모델에서 저장된 경우, 키에서 "module." 제거
-            new_state_dict = {}
-            for k, v in checkpoint.items():
-                new_key = k.replace("module.", "") if k.startswith("module.") else k
-                new_state_dict[new_key] = v
 
             model.load_state_dict(new_state_dict, strict=False)  # strict=False 설정
 

@@ -345,8 +345,8 @@ def train():
     parser.add_argument('--netsize', default='s', type=str)
     parser.add_argument('--adapter', '-a', default='rein', type=str)
     parser.add_argument('--checkpoint', '-c', type=str, default='reins_hydra_10')
-    parser.add_argument('--soup', '-s', type=str, default='ece')
-    parser.add_argument('--savename', '-n', type=str, default='branch_soup')
+    parser.add_argument('--soup', '-s', type=str, default='uniform')
+    parser.add_argument('--save_file', '-n', type=str, default='branch_soup')
     args = parser.parse_args()
 
     config = read_conf(os.path.join('conf', 'data', f'{args.data}.yaml'))
@@ -358,13 +358,6 @@ def train():
    
     checkpoint_dir = os.path.join(config['save_path'], checkpoint)
     save_paths = sorted(glob.glob(os.path.join(checkpoint_dir, "cyclic_checkpoint_epoch*.pth")))
-    # save_paths = [ 
-    #     # os.path.join(config['save_path'], checkpoint, 'cyclic_checkpoint_epoch29.pth'),
-    #     # os.path.join(config['save_path'], checkpoint, 'cyclic_checkpoint_epoch59.pth'),
-    #     # os.path.join(config['save_path'], checkpoint, 'cyclic_checkpoint_epoch89.pth'),
-    #     os.path.join(config['save_path'], checkpoint, 'cyclic_checkpoint_epoch159.pth'),
-    #     os.path.join(config['save_path'], checkpoint, 'cyclic_checkpoint_epoch189.pth'),
-    # ]
 
     # print(save_paths) 
     print(f'Found {len(save_paths)} models to soup.')
@@ -418,7 +411,7 @@ def train():
     save_dir = os.path.join(config['save_path'], 'branch_soup')
     os.makedirs(save_dir, exist_ok=True)
     
-    ckpt_name = args.savename + '.pth'
+    ckpt_name = args.save_file + '.pth'
     save_path = os.path.join(save_dir, ckpt_name)
 
     torch.save(model.state_dict(), save_path)
