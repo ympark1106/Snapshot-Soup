@@ -225,9 +225,9 @@ def plot_heatmap(score_matrix, args, title="Basin Proximity Heatmap"):
     plt.xlabel("Model Index")
     plt.ylabel("Model Index")
     if args.branch == 'yes':
-        plt.savefig(f"Branch_{args.data}__{args.adapter}_branch_basin_proximity_heatmap.png")
+        plt.savefig(os.path.join("vis_score",f"Branch_{args.data}__{args.adapter}_branch_basin_proximity_heatmap.png"))
     elif args.branch == 'no':
-        plt.savefig(f"{args.data}__{args.adapter}_basin_proximity_heatmap.png")
+        plt.savefig(os.path.join("vis_score", f"{args.data}__{args.adapter}_basin_proximity_heatmap.png"))
     plt.show()
 
 

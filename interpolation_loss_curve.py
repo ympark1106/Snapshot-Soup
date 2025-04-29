@@ -229,7 +229,7 @@ def compute_loss(model, dataloader, device):
     with torch.no_grad():
         for inputs, targets in dataloader:
             inputs, targets = inputs.to(device), targets.to(device)
-            outputs = forward(model, inputs)
+            outputs = safe_forward(model, inputs, args)
             loss = loss_fn(outputs, targets)
             total_loss += loss.item() * inputs.size(0)
             total_samples += inputs.size(0)
