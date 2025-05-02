@@ -24,7 +24,7 @@ import adaptformer
 
 import dino_variant
 from sklearn.metrics import f1_score
-from data import dataloader
+from data import cifar100, ham10000, tinyimagenet, eyepacs
 from losses import RankMixup_MNDCG, RankMixup_MRL, focal_loss, focal_loss_adaptive_gamma
 
 def rein_forward(model, inputs):
@@ -70,20 +70,23 @@ def train():
     parser.add_argument('--gpu', '-g', default = '0', type=str)
     parser.add_argument('--netsize', default='s', type=str)
     parser.add_argument('--save_path', '-s', type=str)
+    parser.add_argument('--checkpoint', '-c', type=str, default='branch_soup')
+    parser.add_argument('--num_epoch', '-n', type=int, default=100)
+    parser.add_argument('--learning_rate', type=float, default=1e-3, help='Learning rate')
     args = parser.parse_args()
     
     # os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
     config = read_conf('conf/data/'+args.data+'.yaml')
     device = 'cuda:'+args.gpu
+    checkpoint_path = os.path.join(config['save_path'], args.checkpoint)
     save_path = os.path.join(config['save_path'], args.save_path)
     data_path = config['data_root']
     batch_size = int(config['batch_size'])
-    max_epoch = 100
-    # num_workers = int(config['num_workers'])
+    max_epoch = args.num_epoch
+    # num_workers = int(config['num_workers'])  
     
-    train_loader, valid_loader, test_loader = dataloader.setup_data_loaders(args, data_path, batch_size)    
-    
-    os.makedirs(save_path, exist_ok=True)
+    if not os.path.exists(save_path):
+        os.mkdir(save_path)
         
     if args.netsize == 's':
         model_load = dino_variant._small_dino
@@ -166,10 +169,13 @@ def train():
     model.eval()
 
 
-    lr_decay = [int(0.5*max_epoch), int(0.75*max_epoch), int(0.9*max_epoch)]
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay = 1e-5)
-    # optimizer = torch.optim.Adam(model.parameters(), lr=1e-4, weight_decay = 1e-6)
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, lr_decay)
+    
+    cycle_length = 20        
+    
+    # checkpoint_path = os.path.join(checkpoint_path, f'{args.adapter}_branch_soup.pth')   
+    checkpoint_path = os.path.join(checkpoint_path, 'last.pth.tar')
+    cyclic_scheduler = None  
  
     saver = timm.utils.CheckpointSaver(model, optimizer, checkpoint_dir= save_path, max_history = 1) 
 
@@ -178,25 +184,60 @@ def train():
         
     avg_accuracy = 0.0
     start_time = time.time()
-        
+
     for epoch in range(max_epoch):
+        if epoch % cycle_length == 0:
+            seed = epoch // cycle_length
+            print(f"\nSetting random seed to {seed}")   
+            
+            if args.data == 'cifar100':
+                test_loader = cifar100.get_test_loader(data_dir=data_path, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True)
+                train_loader, valid_loader = cifar100.get_train_valid_loader(data_dir=data_path, augment=True, batch_size=batch_size, valid_size=0.1, random_seed=seed, shuffle=True, num_workers=4, pin_memory=True)
+            elif args.data == 'ham10000':
+                train_loader, valid_loader, test_loader = ham10000.get_dataloaders(data_path, batch_size=batch_size, num_workers=4, random_seed=seed)
+            elif args.data == 'eyepacs':
+                train_loader, valid_loader, test_loader = eyepacs.get_dataloaders(data_path, batch_size=batch_size, pin_memory=True, num_workers=16, random_seed=seed)
+            elif args.data == 'tinyimagenet':
+                train_loader, valid_loader, test_loader = tinyimagenet.get_dataloaders(data_path, batch_size=batch_size, num_workers=4, pin_memory=True, val_split=0.1, random_seed=seed)
+
+        if epoch >= 0 and epoch % cycle_length == 0:
+            print(f"\nRestoring model to branching point")
+            
+            for param_group in optimizer.param_groups:
+                param_group['lr'] = 1e-3
+            
+            checkpoint = torch.load(checkpoint_path, map_location=device)
+
+            # DataParallel 모델에서 저장된 경우, 키에서 "module." 제거
+            new_state_dict = {}
+            for k, v in checkpoint.items():
+                new_key = k.replace("module.", "") if k.startswith("module.") else k
+                new_state_dict[new_key] = v
+
+            model.load_state_dict(new_state_dict, strict=False)  # strict=False 설정
+
+            cyclic_scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+                optimizer, T_0=cycle_length, T_mult=1, eta_min=1e-5
+            )
+
         epoch_start_time = time.time()
-        ## training
+        ## Training
         model.train()
         total_loss = 0
         total = 0
         correct = 0
+
         for batch_idx, (inputs, targets) in enumerate(train_loader):
-            inputs, targets = inputs.to(device), targets.to(device)           
+            targets = targets.type(torch.LongTensor)
+            inputs, targets = inputs.to(device), targets.to(device)
             
             if targets.ndim > 1 and targets.size(1) > 1:
                 targets = torch.argmax(targets, dim=1)
-                
             if targets.ndim > 1:
-                targets = targets.view(-1) 
+                targets = targets.view(-1)
             
             optimizer.zero_grad()
-            
+
             if args.adapter == 'rein':
                 outputs = rein_forward(model, inputs)
             elif args.adapter == 'lora':
@@ -204,22 +245,26 @@ def train():
                     outputs = lora_forward(model, inputs)
             elif args.adapter == 'adaptformer':
                 outputs = adaptformer_forward(model, inputs)
-                
+            
             loss = criterion(outputs, targets)
-            loss.backward()            
+            loss.backward()
             optimizer.step()
+
 
             total_loss += loss
             total += targets.size(0)
-            
-            # _, predicted = outputs[:len(targets)].max(1)        
-            _, predicted = outputs.max(1)    
+            _, predicted = outputs[:len(targets)].max(1)        
             correct += predicted.eq(targets).sum().item()            
             print('\r', batch_idx, len(train_loader), 'Loss: %.3f | Acc: %.3f%% (%d/%d)'
                         % (total_loss/(batch_idx+1), 100.*correct/total, correct, total), end = '')
-            
             train_accuracy = correct/total
-                  
+                
+
+        if optimizer.param_groups[0]['lr'] <= 0.00002:
+                        torch.save(model.state_dict(), os.path.join(save_path, f'cyclic_checkpoint_epoch{epoch}.pth'))
+        cyclic_scheduler.step()
+       
+          
         train_avg_loss = total_loss/len(train_loader)
         epoch_duration = time.time() - epoch_start_time
         epoch_time = str(timedelta(seconds=epoch_duration))
@@ -227,6 +272,7 @@ def train():
         formatted_remaining_time = str(timedelta(seconds=remaining_time))
         print(f"\nEpoch {epoch} took {epoch_time}")
         print(f"Estimated remaining training time: {formatted_remaining_time}")
+        print()
         print()
 
         ## validation
@@ -239,17 +285,15 @@ def train():
             valid_accuracy = validation_accuracy(model, valid_loader, device, mode=args.adapter)
         elif args.adapter == 'lora':
             valid_accuracy = validation_accuracy_lora(model, valid_loader, device)
-            
         if epoch >= max_epoch-10:
             avg_accuracy += valid_accuracy 
-        scheduler.step()
 
         saver.save_checkpoint(epoch, metric = valid_accuracy)
+        
         print(f'Epoch {epoch + 1}/{max_epoch} | Loss: {train_avg_loss:.4f} | '
             f'Train Acc: {train_accuracy:.4f} | Valid Acc: {valid_accuracy:.4f} | '
             f'LR: {optimizer.param_groups[0]["lr"]:.6f}')
-        print(scheduler.get_last_lr())
-    
+            
     total_duration = time.time() - start_time
     totoal_time = str(timedelta(seconds=total_duration))
     print(f"Total training time: {totoal_time}")

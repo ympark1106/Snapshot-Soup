@@ -70,6 +70,8 @@ def train():
     parser.add_argument('--gpu', '-g', default = '0', type=str)
     parser.add_argument('--netsize', default='s', type=str)
     parser.add_argument('--save_path', '-s', type=str)
+    parser.add_argument('--learning_rate', type=float, default=1e-3, help='Learning rate') 
+    
     args = parser.parse_args()
     
     # os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
@@ -166,10 +168,7 @@ def train():
     model.eval()
 
 
-    lr_decay = [int(0.5*max_epoch), int(0.75*max_epoch), int(0.9*max_epoch)]
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay = 1e-5)
-    # optimizer = torch.optim.Adam(model.parameters(), lr=1e-4, weight_decay = 1e-6)
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, lr_decay)
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
  
     saver = timm.utils.CheckpointSaver(model, optimizer, checkpoint_dir= save_path, max_history = 1) 
 
@@ -242,13 +241,11 @@ def train():
             
         if epoch >= max_epoch-10:
             avg_accuracy += valid_accuracy 
-        scheduler.step()
 
         saver.save_checkpoint(epoch, metric = valid_accuracy)
         print(f'Epoch {epoch + 1}/{max_epoch} | Loss: {train_avg_loss:.4f} | '
             f'Train Acc: {train_accuracy:.4f} | Valid Acc: {valid_accuracy:.4f} | '
             f'LR: {optimizer.param_groups[0]["lr"]:.6f}')
-        print(scheduler.get_last_lr())
     
     total_duration = time.time() - start_time
     totoal_time = str(timedelta(seconds=total_duration))

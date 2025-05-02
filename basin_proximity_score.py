@@ -201,7 +201,7 @@ def compute_loss(model, dataloader):
     return total_loss / total_samples
 
 
-def compute_basin_proximity(model1, model2, loss1, loss2, lambda_param=1.0, lambda_loss=5000.0):
+def compute_basin_proximity(model1, model2, loss1, loss2, lambda_param=1.0, lambda_loss=0):
     param_dist = compute_param_distance(model1, model2)
     loss_diff = abs(loss1 - loss2)
     return lambda_param * param_dist + lambda_loss * loss_diff

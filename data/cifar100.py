@@ -7,6 +7,7 @@ Test set size: 10000
 
 import torch
 import numpy as np
+import time
 
 from torchvision import datasets
 from torchvision import transforms
@@ -101,6 +102,8 @@ def get_train_valid_loader(batch_size,
     indices = list(range(num_train))
     split = int(np.floor(valid_size * num_train))
 
+
+    random_seed = int(time.time())
     if shuffle:
         np.random.seed(random_seed)
         np.random.shuffle(indices)

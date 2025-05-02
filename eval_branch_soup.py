@@ -310,6 +310,7 @@ def greedy_soup_acc(models, model_names, valid_loader, device, variant, config, 
         
         # Load the new potential parameters into the base model for evaluation
         temp_model = get_model_from_sd(potential_soup_params, variant, config, device, args)
+        temp_model.to(device)
         temp_model.eval()
         
         # Calculate validation accuracy with the potential new soup parameters
@@ -411,11 +412,11 @@ def train():
     save_dir = os.path.join(config['save_path'], 'branch_soup')
     os.makedirs(save_dir, exist_ok=True)
     
-    ckpt_name = args.save_file + '.pth'
-    save_path = os.path.join(save_dir, ckpt_name)
+    # ckpt_name = args.save_file + '.pth'
+    # save_path = os.path.join(save_dir, ckpt_name)
 
-    torch.save(model.state_dict(), save_path)
-    print(f"\nBranch Soup parameter saved to '{save_path}'")
+    # torch.save(model.state_dict(), save_path)
+    # print(f"\nBranch Soup parameter saved to '{save_path}'")
 
 
     ## validation 

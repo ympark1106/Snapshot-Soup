@@ -78,7 +78,7 @@ def train():
     save_path = os.path.join(config['save_path'], args.save_path)
     data_path = config['data_root']
     batch_size = int(config['batch_size'])
-    max_epoch = 100
+    max_epoch = 1570
     # num_workers = int(config['num_workers'])
     
     train_loader, valid_loader, test_loader = dataloader.setup_data_loaders(args, data_path, batch_size)    
@@ -214,7 +214,7 @@ def train():
             
             checkpoint = torch.load(checkpoint_path, map_location=device)
 
-            model.load_state_dict(new_state_dict, strict=False)  # strict=False 설정
+            model.load_state_dict(checkpoint, strict=False)  # strict=False 설정
 
             cyclic_scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
                 optimizer, T_0=cycle_length, T_mult=1, eta_min=1e-5

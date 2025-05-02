@@ -70,20 +70,22 @@ def train():
     parser.add_argument('--gpu', '-g', default = '0', type=str)
     parser.add_argument('--netsize', default='s', type=str)
     parser.add_argument('--save_path', '-s', type=str)
+    parser.add_argument('--checkpoint', '-c', type=str, default='branch_soup')
+    parser.add_argument('--num_epoch', '-n', type=int, default=100)
     args = parser.parse_args()
     
     # os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
     config = read_conf('conf/data/'+args.data+'.yaml')
     device = 'cuda:'+args.gpu
+    checkpoint_path = os.path.join(config['save_path'], args.checkpoint)
     save_path = os.path.join(config['save_path'], args.save_path)
     data_path = config['data_root']
     batch_size = int(config['batch_size'])
-    max_epoch = 100
-    # num_workers = int(config['num_workers'])
+    max_epoch = args.num_epoch
+    # num_workers = int(config['num_workers'])  
     
-    train_loader, valid_loader, test_loader = dataloader.setup_data_loaders(args, data_path, batch_size)    
-    
-    os.makedirs(save_path, exist_ok=True)
+    if not os.path.exists(save_path):
+        os.mkdir(save_path)
         
     if args.netsize == 's':
         model_load = dino_variant._small_dino
@@ -166,11 +168,13 @@ def train():
     model.eval()
 
 
-    lr_decay = [int(0.5*max_epoch), int(0.75*max_epoch), int(0.9*max_epoch)]
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay = 1e-5)
-    # optimizer = torch.optim.Adam(model.parameters(), lr=1e-4, weight_decay = 1e-6)
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, lr_decay)
- 
+    train_loader, valid_loader, test_loader = dataloader.setup_data_loaders(args, data_path, batch_size)  
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-5, weight_decay = 1e-5)
+         
+    checkpoint_path = os.path.join(checkpoint_path, f'{args.adapter}_branch_soup.pth')   
+    # checkpoint_path = os.path.join(checkpoint_path, 'last.pth.tar')
+
     saver = timm.utils.CheckpointSaver(model, optimizer, checkpoint_dir= save_path, max_history = 1) 
 
     if args.adapter == 'lora':
@@ -178,25 +182,31 @@ def train():
         
     avg_accuracy = 0.0
     start_time = time.time()
-        
+
     for epoch in range(max_epoch):
+            
+        checkpoint = torch.load(checkpoint_path, map_location=device)
+
+        model.load_state_dict(checkpoint, strict=False)  # strict=False 설정
+
         epoch_start_time = time.time()
-        ## training
+        ## Training
         model.train()
         total_loss = 0
         total = 0
         correct = 0
+
         for batch_idx, (inputs, targets) in enumerate(train_loader):
-            inputs, targets = inputs.to(device), targets.to(device)           
+            targets = targets.type(torch.LongTensor)
+            inputs, targets = inputs.to(device), targets.to(device)
             
             if targets.ndim > 1 and targets.size(1) > 1:
                 targets = torch.argmax(targets, dim=1)
-                
             if targets.ndim > 1:
-                targets = targets.view(-1) 
+                targets = targets.view(-1)
             
             optimizer.zero_grad()
-            
+
             if args.adapter == 'rein':
                 outputs = rein_forward(model, inputs)
             elif args.adapter == 'lora':
@@ -204,22 +214,21 @@ def train():
                     outputs = lora_forward(model, inputs)
             elif args.adapter == 'adaptformer':
                 outputs = adaptformer_forward(model, inputs)
-                
+            
             loss = criterion(outputs, targets)
-            loss.backward()            
+            loss.backward()
             optimizer.step()
+
 
             total_loss += loss
             total += targets.size(0)
-            
-            # _, predicted = outputs[:len(targets)].max(1)        
-            _, predicted = outputs.max(1)    
+            _, predicted = outputs[:len(targets)].max(1)        
             correct += predicted.eq(targets).sum().item()            
             print('\r', batch_idx, len(train_loader), 'Loss: %.3f | Acc: %.3f%% (%d/%d)'
                         % (total_loss/(batch_idx+1), 100.*correct/total, correct, total), end = '')
-            
             train_accuracy = correct/total
-                  
+
+          
         train_avg_loss = total_loss/len(train_loader)
         epoch_duration = time.time() - epoch_start_time
         epoch_time = str(timedelta(seconds=epoch_duration))
@@ -227,6 +236,7 @@ def train():
         formatted_remaining_time = str(timedelta(seconds=remaining_time))
         print(f"\nEpoch {epoch} took {epoch_time}")
         print(f"Estimated remaining training time: {formatted_remaining_time}")
+        print()
         print()
 
         ## validation
@@ -239,17 +249,16 @@ def train():
             valid_accuracy = validation_accuracy(model, valid_loader, device, mode=args.adapter)
         elif args.adapter == 'lora':
             valid_accuracy = validation_accuracy_lora(model, valid_loader, device)
-            
         if epoch >= max_epoch-10:
             avg_accuracy += valid_accuracy 
-        scheduler.step()
-
-        saver.save_checkpoint(epoch, metric = valid_accuracy)
+        # saver.save_checkpoint(epoch, metric = valid_accuracy)
+        
         print(f'Epoch {epoch + 1}/{max_epoch} | Loss: {train_avg_loss:.4f} | '
             f'Train Acc: {train_accuracy:.4f} | Valid Acc: {valid_accuracy:.4f} | '
             f'LR: {optimizer.param_groups[0]["lr"]:.6f}')
-        print(scheduler.get_last_lr())
     
+    torch.save(model.state_dict(), os.path.join(save_path, f'{args.adapter}_post_{args.num_epoch}.pth'))
+            
     total_duration = time.time() - start_time
     totoal_time = str(timedelta(seconds=total_duration))
     print(f"Total training time: {totoal_time}")

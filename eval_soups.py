@@ -278,16 +278,16 @@ def train():
     
     if args.adapter == 'rein':
         save_paths = [
-            os.path.join(config['save_path'], 'reins_focal_1'),
-            os.path.join(config['save_path'], 'reins_focal_2'),
-            os.path.join(config['save_path'], 'reins_focal_3'),
-            os.path.join(config['save_path'], 'reins_focal_4'),
-            os.path.join(config['save_path'], 'reins_focal_5'),
-            os.path.join(config['save_path'], 'reins_focal_6'),
-            os.path.join(config['save_path'], 'reins_focal_7'),
-            os.path.join(config['save_path'], 'reins_focal_8'),
-            os.path.join(config['save_path'], 'reins_focal_9'),
-            os.path.join(config['save_path'], 'reins_focal_10')
+            os.path.join(config['save_path'], 'rein_focal_1'),
+            os.path.join(config['save_path'], 'rein_focal_2'),
+            os.path.join(config['save_path'], 'rein_focal_3'),
+            os.path.join(config['save_path'], 'rein_focal_4'),
+            os.path.join(config['save_path'], 'rein_focal_5'),
+            os.path.join(config['save_path'], 'rein_focal_6'),
+            os.path.join(config['save_path'], 'rein_focal_7'),
+            os.path.join(config['save_path'], 'rein_focal_8'),
+            os.path.join(config['save_path'], 'rein_focal_9'),
+            os.path.join(config['save_path'], 'rein_focal_10')
         ]
     elif args.adapter == 'lora':
         save_paths = [
